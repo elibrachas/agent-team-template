@@ -1,0 +1,37 @@
+{
+  "$comment": "Proyecto de EJEMPLO (Acme es un SaaS ficticio): reemplaza todos los valores por los de tu producto. Schema documentado en projects/README.md. Lo consumen scripts/project.ps1 (Resolve-ProjectContext) y los wrappers vía -Project acme.",
+  "slug": "acme",
+  "name": "Acme",
+  "ownerName": "Alex",
+  "linear": {
+    "workspace": "your-workspace",
+    "teamKey": "ACM",
+    "teamId": "00000000-0000-0000-0000-000000000000"
+  },
+  "productRepoPath": "..\\..\\acme-app",
+  "productRepoUrl": "https://github.com/your-org/acme-app",
+  "productUrl": "https://acme.example",
+  "productStack": "TODO(acme): describe tu stack. Ejemplo: Next.js (App Router) + TypeScript + Tailwind + Supabase (Postgres + RLS) + CMS headless (p. ej. Payload) + Stripe. Package manager: pnpm. Deploy: Vercel.",
+  "envFile": ".env.acme",
+  "contextDir": "projects\\acme",
+  "mcpConfig": "plugins\\team-growth\\.mcp.json",
+  "mcpVariants": {
+    "qa": "plugins\\team-growth\\qa.mcp.json",
+    "design": "plugins\\team-growth\\design.mcp.json",
+    "seo": "plugins\\team-growth\\seo.mcp.json",
+    "aeo": "plugins\\team-growth\\aeo.mcp.json"
+  },
+  "languageConvention": "TODO(acme): convención de idioma del copy customer-facing. Ejemplo: español neutro con tuteo, ortografía completa (tildes también en mayúsculas y títulos, signos de apertura ¿¡). Si un contenido existente no la cumple, es un error a corregir, no un estilo a imitar.",
+  "strategicFocus": "TODO(acme): foco estratégico actual en 1-3 oraciones. Ejemplo: segmento B2C self-serve; prioridad en activación y conversión a pago; el plan Enterprise queda fuera de scope por ahora.",
+  "shippedDigestFollowers": ["owner@example.com"],
+  "agents": {
+    "capi":  { "enabled": true },
+    "numa":  { "enabled": true },
+    "greta": { "enabled": true },
+    "pico":  { "enabled": true },
+    "cody":  { "enabled": true },
+    "qualy": { "enabled": true },
+    "daly":  { "enabled": true },
+    "leda":  { "enabled": true }
+  }
+}

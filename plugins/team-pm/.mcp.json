@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json.schemastore.org/mcp.json",
+  "_comment_": "Linear y Notion son MCPs remotos oficiales. Para headless (claude -p en server) usamos API key vía Authorization header — ambos lo soportan nativo, sin browser flow. Slack vía stdio con bot token.",
+  "mcpServers": {
+    "linear": {
+      "_comment_": "MCP oficial remoto de Linear (https://linear.app/docs/mcp). Auth con Personal API key (Settings > Account > Security & Access > Generate API key). Sin browser flow, ideal para headless.",
+      "type": "http",
+      "url": "https://mcp.linear.app/mcp",
+      "headers": {
+        "Authorization": "Bearer ${LINEAR_API_KEY}"
+      }
+    },
+    "notion": {
+      "_comment_": "MCP oficial remoto de Notion. Internal integration token desde Settings > Connections > Develop > Create new integration.",
+      "type": "http",
+      "url": "https://mcp.notion.com/mcp",
+      "headers": {
+        "Authorization": "Bearer ${NOTION_TOKEN}"
+      }
+    },
+    "slack": {
+      "_comment_": "Slack vía MCP local stdio con bot token. App de Slack creada en api.slack.com/apps con scopes chat:write, channels:read.",
+      "command": "npx",
+      "args": ["-y", "@slack/mcp-server"],
+      "env": { "SLACK_BOT_TOKEN": "${SLACK_BOT_TOKEN}" }
+    }
+  }
+}

@@ -1,0 +1,79 @@
+{
+  "_uso_": "Probe de AUTH cada 4h (06/10/14/18/22): corre run-health-check.ps1 -AuthOnly, que hace un `claude -p` real contra OAuth (el `claude --version` del health-check diario NO detecta un logout). Cubre el modo de falla 'Claude deslogueado deja al roster entero sin correr durante días sin ninguna alarma'. Si el OAuth está caído (o 3+ de las últimas 5 corridas fallaron) crea/actualiza UN issue [Alert] en el team de Linear del proyecto, asignado al owner (push de Linear, con dedup por clase), y la ejecución queda en rojo (exit 1). El health-check COMPLETO diario (core-health-check, 13:00) corre aparte. Importa inactivo, prueba con Execute Workflow y actívalo.",
+  "name": "core · auth-probe (cada 4h)",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Argentina/Buenos_Aires"
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 6,10,14,18,22 * * *"
+            }
+          ]
+        }
+      },
+      "id": "trigger-auth-probe",
+      "name": "Cron 4h",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        260,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "command": "powershell -ExecutionPolicy Bypass -NoProfile -File \"C:\\agents\\agent-team-template\\scripts\\run-health-check.ps1\" -AuthOnly"
+      },
+      "id": "exec-auth-probe",
+      "name": "Run auth-probe",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        500,
+        300
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "log-auth-probe",
+      "name": "Resultado (stdout)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        740,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Cron 4h": {
+      "main": [
+        [
+          {
+            "node": "Run auth-probe",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run auth-probe": {
+      "main": [
+        [
+          {
+            "node": "Resultado (stdout)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

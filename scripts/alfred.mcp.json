@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json.schemastore.org/mcp.json",
+  "_comment_": "MCP config de Alfred 🎩 (meta-agente que mejora a los otros agentes), vía scripts/run-alfred.ps1. Loadout MÍNIMO a propósito: SOLO Linear. Alfred trabaja sobre el SISTEMA DE AGENTES (prompts, wrappers, docs del repo de agentes), no sobre datos del producto — por eso NO lleva supabase / ga4 / stripe / gsc / cwv. Lee las escalaciones (issues label 'alfred') + los threads, y reporta. El resto de su trabajo (leer/editar el repo de agentes, git, PR) es con Read/Edit/Write/Bash/Grep/Glob + gh, no MCP. El loadout pesado (Opus high, Edit/Write, clon limpio para PR) lo setea run-alfred.ps1.",
+  "mcpServers": {
+    "linear": {
+      "_comment_": "MCP remoto oficial de Linear. Alfred lee los issues label 'alfred' (escalaciones), lee threads completos, comenta su veredicto (🤖 Alfred 🎩:), y crea/actualiza issues [Meta] cuando abre un PR. Bearer = LINEAR_API_KEY.",
+      "type": "http",
+      "url": "https://mcp.linear.app/mcp",
+      "headers": { "Authorization": "Bearer ${LINEAR_API_KEY}" }
+    }
+  }
+}

@@ -1,0 +1,79 @@
+{
+  "_uso_": "Health-check diario del sistema de agentes (PowerShell puro, sin LLM, costo $0). Importa inactivo, prueba con Execute Workflow y actívalo. Corre a las 13:00, después de los crons de la mañana. Si encuentra problemas crea un issue [Alert] en el team de Linear del proyecto y la ejecución queda en rojo (exit 1).",
+  "name": "core · health-check",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Argentina/Buenos_Aires"
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 13 * * *"
+            }
+          ]
+        }
+      },
+      "id": "trigger-health",
+      "name": "Cron",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        260,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "command": "powershell -ExecutionPolicy Bypass -NoProfile -File \"C:\\agents\\agent-team-template\\scripts\\run-health-check.ps1\""
+      },
+      "id": "exec-health",
+      "name": "Run health-check",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        500,
+        300
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "log-health",
+      "name": "Resultado (stdout)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        740,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Cron": {
+      "main": [
+        [
+          {
+            "node": "Run health-check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run health-check": {
+      "main": [
+        [
+          {
+            "node": "Resultado (stdout)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

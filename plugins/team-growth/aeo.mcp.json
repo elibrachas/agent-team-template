@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json.schemastore.org/mcp.json",
+  "_comment_": "MCP config de Greta para la skill aeo-weekly-review (cron semanal, vía scripts/run-greta-aeo.ps1). Loadout MÍNIMO a propósito: solo supabase + linear + ga4. Omite 'gsc' y 'cwv' (señales SEO de ranking/perf, fuera del alcance AEO) y 'stripe'. El probing de answer-engines lo hace la tool built-in WebSearch (no es un MCP; se habilita en el --allowedTools del wrapper). El loadout pesado lo setea run-greta-aeo.ps1. Complementario a seo.mcp.json — no lo reemplaza. Un proyecto puede tener su propia variante vía project.json → mcpVariants.aeo.",
+  "mcpServers": {
+    "supabase": {
+      "_comment_": "Read-only, agregados. NUNCA PII. Para AEO: ¿la atribución bucketea un canal IA/LLM?, conversión de esa cohorte, inventario de contenido publicado (la superficie de citación).",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@supabase/mcp-server-supabase@latest",
+        "--read-only",
+        "--project-ref=${SUPABASE_PROJECT_REF}"
+      ],
+      "env": {
+        "SUPABASE_ACCESS_TOKEN": "${SUPABASE_ACCESS_TOKEN}"
+      }
+    },
+    "linear": {
+      "_comment_": "MCP remoto oficial de Linear. Greta lee issues [AEO] previos (memoria de disposición) Y el board [SEO] (regla de complementariedad/anti-duplicación), crea el [Report] semanal + los [Proposal] (AEO) nuevos, y comenta data points en issues abiertos. Bearer = LINEAR_API_KEY.",
+      "type": "http",
+      "url": "https://mcp.linear.app/mcp",
+      "headers": {
+        "Authorization": "Bearer ${LINEAR_API_KEY}"
+      }
+    },
+    "ga4": {
+      "_comment_": "MCP oficial de Google Analytics (pipx; 'analytics-mcp' en el PATH). Para AEO: el canal de asistentes IA — sesiones, tendencia, landing pages que la IA referencia, conversión downstream. Es el KPI lagging de AEO.",
+      "command": "analytics-mcp",
+      "env": {
+        "GOOGLE_APPLICATION_CREDENTIALS": "${GA4_SERVICE_ACCOUNT_JSON_PATH}",
+        "GOOGLE_PROJECT_ID": "${GOOGLE_PROJECT_ID}"
+      }
+    }
+  }
+}

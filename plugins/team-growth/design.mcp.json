@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json.schemastore.org/mcp.json",
+  "_comment_": "MCP config de Daly (UX/UI designer). Sibling de qa.mcp.json a propósito: así si después Daly necesita un MCP que Qualy no (ej. Figma), divergen sin acoplarse. Servers: linear (leer issue + thread + comentar + crear [Design] issue), supabase read-only (revisar formato de data real cuando importa al diseño, NUNCA PII), playwright (browser real para ver UI en vivo y comparar contra mockup). respond-linear.ps1 elige este archivo via $agent.McpConfig.",
+  "mcpServers": {
+    "linear": {
+      "type": "http",
+      "url": "https://mcp.linear.app/mcp",
+      "headers": { "Authorization": "Bearer ${LINEAR_API_KEY}" }
+    },
+    "supabase": {
+      "_comment_": "Read-only, mismo MCP que el resto. Daly lo usa rara vez (ej. ver qué shape real tiene un campo que va a mockupear), siempre agregadas o muestras sin PII.",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@supabase/mcp-server-supabase@latest",
+        "--read-only",
+        "--project-ref=${SUPABASE_PROJECT_REF}"
+      ],
+      "env": { "SUPABASE_ACCESS_TOKEN": "${SUPABASE_ACCESS_TOKEN}" }
+    },
+    "playwright": {
+      "_comment_": "Mismo setup que el de qa.mcp.json (Qualy). Browser real headless para ver la UI en vivo: navegar, screenshots, comparar el mockup propuesto contra el estado actual. Requiere browsers instalados una vez: 'pnpm exec playwright install chromium' en el repo del producto.",
+      "command": "npx",
+      "args": ["-y", "@playwright/mcp@latest", "--headless", "--isolated", "--browser", "chromium"]
+    }
+  }
+}

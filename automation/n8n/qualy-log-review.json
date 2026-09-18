@@ -1,0 +1,79 @@
+{
+  "_uso_": "Cron DIARIO de Qualy (QA tester): revisión de logs del backend (advisors + logs de la base de datos como fuente principal, logs de runtime del hosting como best-effort). Importa a n8n (ver README.md) y actívalo. Cron '0 8 * * *' = todos los días 08:00. run-qualy.ps1 -Job log-review escribe el brief en queue/pending-review/ y crea un issue en Linear (label agent-report, Backlog) SOLO si hay un bug accionable.",
+  "name": "acme · qualy-log-review (diario)",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Argentina/Buenos_Aires"
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8 * * *"
+            }
+          ]
+        }
+      },
+      "id": "trigger-qualy-logs",
+      "name": "Cron diario (08:00)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        260,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "command": "powershell -ExecutionPolicy Bypass -NoProfile -File \"C:\\agents\\agent-team-template\\scripts\\run-qualy.ps1\" -Job log-review -Project acme"
+      },
+      "id": "exec-qualy-logs",
+      "name": "Run Qualy log-review",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        500,
+        300
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "log-qualy-logs",
+      "name": "Resultado (stdout)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        740,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Cron diario (08:00)": {
+      "main": [
+        [
+          {
+            "node": "Run Qualy log-review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Qualy log-review": {
+      "main": [
+        [
+          {
+            "node": "Resultado (stdout)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

@@ -1,0 +1,79 @@
+{
+  "_uso_": "Cron cada 4h: corre la skill funnel-monitor (HITL-1) en Haiku para abaratar. Vigila el funnel del producto y crea un issue en Linear SOLO si detecta una anomalía. Importa inactivo, prueba con Execute Workflow y actívalo.",
+  "name": "acme · funnel-monitor (cada 4h, Haiku)",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Argentina/Buenos_Aires"
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 */4 * * *"
+            }
+          ]
+        }
+      },
+      "id": "trigger-funnel",
+      "name": "Cron cada 4h",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        260,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "command": "powershell -ExecutionPolicy Bypass -NoProfile -File \"C:\\agents\\agent-team-template\\scripts\\run-skill.ps1\" -Skill funnel-monitor -Model claude-haiku-4-5-20251001 -Project acme"
+      },
+      "id": "exec-funnel",
+      "name": "Run funnel-monitor (Haiku)",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        500,
+        300
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "log-funnel",
+      "name": "Snapshot + alerta (stdout)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        740,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Cron cada 4h": {
+      "main": [
+        [
+          {
+            "node": "Run funnel-monitor (Haiku)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run funnel-monitor (Haiku)": {
+      "main": [
+        [
+          {
+            "node": "Snapshot + alerta (stdout)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

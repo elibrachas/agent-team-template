@@ -1,0 +1,79 @@
+{
+  "_uso_": "Cron DIARIO 09:00: corre la skill signup-to-paid-tracker (HITL-1), que sigue la conversión de registros gratuitos a pagos y deja el brief en Linear. Importa inactivo, prueba con Execute Workflow y actívalo.",
+  "name": "acme · signup-to-paid-tracker (diario 09:00)",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Argentina/Buenos_Aires"
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 * * *"
+            }
+          ]
+        }
+      },
+      "id": "trigger-s2p",
+      "name": "Cron 09:00 ART",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        260,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "command": "powershell -ExecutionPolicy Bypass -NoProfile -File \"C:\\agents\\agent-team-template\\scripts\\run-skill.ps1\" -Skill signup-to-paid-tracker -Project acme"
+      },
+      "id": "exec-s2p",
+      "name": "Run signup-to-paid-tracker",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        500,
+        300
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "log-s2p",
+      "name": "Brief + costo (stdout)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        740,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Cron 09:00 ART": {
+      "main": [
+        [
+          {
+            "node": "Run signup-to-paid-tracker",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run signup-to-paid-tracker": {
+      "main": [
+        [
+          {
+            "node": "Brief + costo (stdout)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

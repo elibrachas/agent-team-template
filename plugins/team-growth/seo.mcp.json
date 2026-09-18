@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json.schemastore.org/mcp.json",
+  "_comment_": "MCP config de Greta para la skill seo-weekly-review (cron semanal, vía scripts/run-greta-seo.ps1). Separado de .mcp.json a propósito: suma el server 'gsc' (Google Search Console) que el resto de las corridas NO necesita levantar, y omite 'stripe' (no es SEO). El loadout pesado (modelo, Write solo para la memoria, --add-dir al repo del producto) lo setea run-greta-seo.ps1. Un proyecto puede tener su propia variante vía project.json → mcpVariants.seo.",
+  "mcpServers": {
+    "supabase": {
+      "_comment_": "Read-only, agregados. NUNCA PII. Para SEO: tráfico orgánico atribuido, inventario de páginas/guías publicadas, funnel desde landings orgánicas (tablas en projects/<slug>/data-model.md).",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@supabase/mcp-server-supabase@latest",
+        "--read-only",
+        "--project-ref=${SUPABASE_PROJECT_REF}"
+      ],
+      "env": {
+        "SUPABASE_ACCESS_TOKEN": "${SUPABASE_ACCESS_TOKEN}"
+      }
+    },
+    "linear": {
+      "_comment_": "MCP remoto oficial de Linear. Greta lee issues [SEO] previos (memoria de disposición), crea el [Report] semanal + los [Proposal] nuevos, y comenta data points en issues abiertos. Bearer = LINEAR_API_KEY.",
+      "type": "http",
+      "url": "https://mcp.linear.app/mcp",
+      "headers": {
+        "Authorization": "Bearer ${LINEAR_API_KEY}"
+      }
+    },
+    "ga4": {
+      "_comment_": "MCP oficial de Google Analytics (pipx; 'analytics-mcp' en el PATH). Para SEO: sesiones orgánicas, top landing pages, engagement, conversiones desde orgánico.",
+      "command": "analytics-mcp",
+      "env": {
+        "GOOGLE_APPLICATION_CREDENTIALS": "${GA4_SERVICE_ACCOUNT_JSON_PATH}",
+        "GOOGLE_PROJECT_ID": "${GOOGLE_PROJECT_ID}"
+      }
+    },
+    "cwv": {
+      "_comment_": "Core Web Vitals (CrUX field + PageSpeed Insights lab), wrapper propio en scripts/mcp-cwv/. Tools: get_cwv_field, get_cwv_audit. Auth con GOOGLE_API_KEY.",
+      "command": "node",
+      "args": [
+        "scripts/mcp-cwv/index.mjs"
+      ],
+      "env": {
+        "GOOGLE_API_KEY": "${GOOGLE_API_KEY}"
+      }
+    },
+    "gsc": {
+      "_comment_": "Google Search Console, wrapper propio en scripts/mcp-gsc/. Tools: gsc_query (search analytics: queries/pages/clicks/impr/CTR/posición), gsc_url_inspect (indexación de una URL), gsc_sitemaps (sitemaps + errores). Auth con service account JWT (mismo SA que GA4, scope webmasters.readonly). PREREQ: habilitar Search Console API en el GCP project + agregar el email del SA como usuario de la propiedad en GSC. Ver docs/server-setup.md.",
+      "command": "node",
+      "args": [
+        "scripts/mcp-gsc/index.mjs"
+      ],
+      "env": {
+        "GA4_SERVICE_ACCOUNT_JSON_PATH": "${GA4_SERVICE_ACCOUNT_JSON_PATH}",
+        "GSC_SITE_URL": "${GSC_SITE_URL}"
+      }
+    }
+  }
+}

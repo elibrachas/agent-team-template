@@ -1,0 +1,13 @@
+{
+  "name": "agent-team-mcp-gsc",
+  "version": "0.1.0",
+  "description": "MCP server for Google Search Console (search analytics + URL inspection + sitemaps) — used by Greta (seo-weekly-review) and Numa",
+  "private": true,
+  "type": "module",
+  "main": "index.mjs",
+  "bin": "index.mjs",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.18.0",
+    "google-auth-library": "^9.15.0"
+  }
+}

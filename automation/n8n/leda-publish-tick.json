@@ -1,0 +1,79 @@
+{
+  "_uso_": "Cron HORARIO de Leda (tick). Importa a n8n y actívalo. Cron '0 * * * *' = cada hora en punto. run-skill.ps1 -Skill content-blog-publish-tick lista posts con ledaStatus=scheduled cuya ledaPublishAt ya pasó, verifica la señal de cancelación (comentario 'Leda: stop' en el issue [Content] o estado Cancelled) y cambia _status='published' si corresponde. Usa Sonnet (el modelo de Leda en agents.ps1): con Haiku el agente a veces alucinaba que no podía ejecutar PowerShell y no publicaba. Costo objetivo < US$0,30 por corrida.",
+  "name": "acme · leda-publish-tick (cada 1h, Sonnet)",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Argentina/Buenos_Aires"
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 * * * *"
+            }
+          ]
+        }
+      },
+      "id": "trigger-leda-tick",
+      "name": "Cron horario",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        260,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "command": "powershell -ExecutionPolicy Bypass -NoProfile -File \"C:\\agents\\agent-team-template\\scripts\\run-skill.ps1\" -Skill content-blog-publish-tick -Project acme"
+      },
+      "id": "exec-leda-tick",
+      "name": "Run content-blog-publish-tick",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        500,
+        300
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "log-leda-tick",
+      "name": "Resultado (stdout)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        740,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Cron horario": {
+      "main": [
+        [
+          {
+            "node": "Run content-blog-publish-tick",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run content-blog-publish-tick": {
+      "main": [
+        [
+          {
+            "node": "Resultado (stdout)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

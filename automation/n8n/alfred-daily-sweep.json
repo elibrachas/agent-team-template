@@ -1,0 +1,79 @@
+{
+  "_uso_": "Cron DIARIO de Alfred (meta-agente que mejora a los otros agentes): barre los issues de Linear con label 'alfred' (las escalaciones que dejan los otros agentes cuando el owner marca con fuerza un feedback de comportamiento) y los procesa. Si amerita, abre un PR contra el repo de AGENTES (scripts/agents.ps1, un override, un SKILL.md, un wrapper o una doc) y comenta; si no, comenta por qué no. El owner revisa y aprueba. Método: docs/alfred.md. Importa a n8n (ver README.md), confirma que el Execute Command corre en el server Windows y actívalo. Cron '0 7 * * *' = todos los días 07:00 (temprano: procesa las escalaciones del día anterior antes de que arranque la jornada, y esquiva los otros crons pesados). run-alfred.ps1 corre en Opus con effort high; abre PR SOLO si hay un clon limpio en ALFRED_REPO_PATH (si no, deja el diff propuesto como comentario; ver docs/server-setup.md § Alfred). El llamado directo ('Alfred: ...' en un issue) NO pasa por este workflow: lo maneja linear-feedback-listener (regex) → respond-linear.ps1 → run-alfred.ps1 -Job issue.",
+  "name": "acme · alfred-daily-sweep (diario)",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Argentina/Buenos_Aires"
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 7 * * *"
+            }
+          ]
+        }
+      },
+      "id": "trigger-alfred-sweep",
+      "name": "Cron diario (07:00)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        260,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "command": "powershell -ExecutionPolicy Bypass -NoProfile -File \"C:\\agents\\agent-team-template\\scripts\\run-alfred.ps1\" -Job sweep -Project acme"
+      },
+      "id": "exec-alfred-sweep",
+      "name": "Run Alfred sweep",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        500,
+        300
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "log-alfred-sweep",
+      "name": "Resultado (stdout)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        740,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Cron diario (07:00)": {
+      "main": [
+        [
+          {
+            "node": "Run Alfred sweep",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Alfred sweep": {
+      "main": [
+        [
+          {
+            "node": "Resultado (stdout)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

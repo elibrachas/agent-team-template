@@ -1,0 +1,79 @@
+{
+  "_uso_": "Cron de SYNC de la copia VIVA del repo de agentes (la máquina que corre los crons y el listener). Corre scripts/sync-agents-repo.ps1 cada 3h para traer por fast-forward lo que se haya mergeado (típicamente un PR de Alfred ya aprobado) sin esperar al sweep diario de Alfred. NO llama a claude: costo cero. SEGURO POR DISEÑO: el script hace `git pull --ff-only` SOLO si el working tree está limpio (nunca pisa tu WIP) y solo si es fast-forward; si hay WIP sin commitear, se saltea. Por qué existe: si el único sync automático es un sub-paso del sweep diario de Alfred, basta con que ese cron esté apagado o que la copia arrastre WIP para que el runtime quede días atrás de los fixes mergeados. Este cron desacopla el sync para que la copia viva se ponga al día con regularidad. Importa a n8n (ver README.md), confirma que el Execute Command corre en el server Windows y actívalo. El schedule '0 */3 * * *' es un default conservador; ajústalo a gusto (el pull tarda ~2 s). Requisito: la copia viva no debería arrastrar WIP sin commitear indefinidamente, o el sync se auto-saltea (ver docs/server-setup.md §5).",
+  "name": "core · sync-agents-repo (cada 3h)",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Argentina/Buenos_Aires"
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 */3 * * *"
+            }
+          ]
+        }
+      },
+      "id": "trigger-sync-agents",
+      "name": "Cron cada 3h",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        260,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "command": "powershell -ExecutionPolicy Bypass -NoProfile -File \"C:\\agents\\agent-team-template\\scripts\\sync-agents-repo.ps1\""
+      },
+      "id": "exec-sync-agents",
+      "name": "Sync copia viva (ff-only, si limpio)",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        500,
+        300
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "log-sync-agents",
+      "name": "Resultado (stdout)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        740,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Cron cada 3h": {
+      "main": [
+        [
+          {
+            "node": "Sync copia viva (ff-only, si limpio)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sync copia viva (ff-only, si limpio)": {
+      "main": [
+        [
+          {
+            "node": "Resultado (stdout)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

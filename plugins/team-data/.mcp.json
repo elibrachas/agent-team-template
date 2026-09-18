@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json.schemastore.org/mcp.json",
+  "_comment_": "En el ejemplo, Supabase es la base de prod Y el warehouse. Las skills de team-data son READ-ONLY: el MCP corre con --read-only. Auth con un PAT de Supabase (SUPABASE_ACCESS_TOKEN). Solo agregados (counts/sums), NUNCA extraer PII individual. Si tu warehouse es otro (Postgres directo, BigQuery, etc.), reemplaza este server manteniendo el modo read-only.",
+  "mcpServers": {
+    "supabase": {
+      "_comment_": "MCP oficial de Supabase en modo read-only, scopeado al project del producto (SUPABASE_PROJECT_REF, valor en .env.<slug>). Es el camino primario de las skills de data.",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@supabase/mcp-server-supabase@latest",
+        "--read-only",
+        "--project-ref=${SUPABASE_PROJECT_REF}"
+      ],
+      "env": { "SUPABASE_ACCESS_TOKEN": "${SUPABASE_ACCESS_TOKEN}" }
+    }
+  },
+  "_pending_no_correr": {
+    "_comment_": "Servidores NO activos (ejemplos). Verifica el paquete real en el connector registry o arma un wrapper antes de moverlos a mcpServers.",
+    "postgres_directo": {
+      "_why_": "Alternativa para queries pesadas o una réplica read-only.",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-postgres", "${DATABASE_URL_READONLY}"]
+    },
+    "ga4": {
+      "_why_": "Para cruzar atribución client-side. Ver la config activa en plugins/team-growth/.mcp.json.",
+      "env": {
+        "GA4_PROPERTY_ID": "${GA4_PROPERTY_ID}",
+        "GA4_SERVICE_ACCOUNT_JSON_PATH": "${GA4_SERVICE_ACCOUNT_JSON_PATH}"
+      }
+    },
+    "stripe": {
+      "_why_": "Reconciliar pagos. Usar una restricted key read-only. Ver la config activa en plugins/team-growth/.mcp.json.",
+      "env": { "STRIPE_RESTRICTED_KEY": "${STRIPE_RESTRICTED_KEY}" }
+    }
+  }
+}

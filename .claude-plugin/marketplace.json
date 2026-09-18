@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json.schemastore.org/claude-marketplace.json",
+  "name": "team-marketplace",
+  "version": "0.1.0",
+  "owner": {
+    "name": "your-org",
+    "email": "owner@example.com"
+  },
+  "description": "Plugins del equipo de agentes: assets compartidos, Growth, Data y PM. El contexto de cada producto vive en projects/<slug>/.",
+  "plugins": [
+    {
+      "name": "team-shared",
+      "source": "./plugins/team-shared",
+      "description": "Skills compartidas por todos los agentes: brand voice, glosario, customer personas y design system (cargan el contexto del proyecto activo) + pipeline de blog."
+    },
+    {
+      "name": "team-growth",
+      "source": "./plugins/team-growth",
+      "description": "SEO, AEO, monitoreo de funnel y conversión. MCPs de analytics, performance y pagos en modo read-only."
+    },
+    {
+      "name": "team-data",
+      "source": "./plugins/team-data",
+      "description": "Queries read-only sobre la base/warehouse del proyecto: cohortes, conversión, revenue, churn y detección de anomalías."
+    },
+    {
+      "name": "team-pm",
+      "source": "./plugins/team-pm",
+      "description": "Pipeline insight → propuesta → roadmap con HITL: scans de ideas y deuda técnica, digests y revisión de avance."
+    }
+  ]
+}

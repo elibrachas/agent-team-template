@@ -1,0 +1,7 @@
+{
+  "name": "team-pm",
+  "version": "0.1.0",
+  "description": "Pipeline insight → propuesta → spec con HITL: scans de ideas, deuda técnica, roadmap y digests.",
+  "author": { "name": "your-org" },
+  "strict": true
+}

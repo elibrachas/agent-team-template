@@ -1,0 +1,7 @@
+{
+  "name": "team-growth",
+  "version": "0.1.0",
+  "description": "SEO, AEO, funnel y conversión. Ver docs/architecture.md para el roster de agentes.",
+  "author": { "name": "your-org" },
+  "strict": true
+}

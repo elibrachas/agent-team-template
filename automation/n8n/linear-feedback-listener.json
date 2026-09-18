@@ -1,0 +1,138 @@
+{
+  "_uso_": "MULTI-PROYECTO: el nodo Linear Trigger de n8n obliga a elegir UN team, así que hay UN TRIGGER POR TEAM, todos conectados al mismo IF. respond-linear.ps1 resuelve el proyecto por -TeamId (o por el prefijo del identifier, p. ej. ACM-12). Para sumar un proyecto: duplica un nodo trigger, elige el team nuevo y conéctalo al IF; nada más. ANTES de tocar el workflow LIVE en n8n: exporta la versión live desde la UI y aplícale el diff mínimo; NO importes este archivo encima del live sin comparar (el live puede haber divergido). Después de reactivar, verifica que no queden webhooks huérfanos en Linear (causan respuestas duplicadas).",
+  "name": "core · linear-feedback-listener (Nombre: → agente responde)",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Argentina/Buenos_Aires"
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Setup al importar (hacer una sola vez)\n1. **Credencial**: en el nodo `Linear Trigger` elige o crea la credencial *Linear API* (con tu `LINEAR_API_KEY`). Al activar el workflow, n8n registra el webhook en Linear automáticamente (tu n8n tiene que ser alcanzable desde internet: túnel o URL pública).\n2. **Team**: el nodo Linear Trigger obliga a elegir UN team, así que hay UN TRIGGER POR TEAM, todos conectados al mismo IF. Reemplaza el `teamId` placeholder (`00000000-0000-0000-0000-000000000000`) por el UUID de tu team (p. ej. `ACM`). `respond-linear.ps1` resuelve el proyecto por el `-TeamId` del payload (fallback: prefijo del identifier, p. ej. `ACM-12` → acme). Para sumar un proyecto: duplica el trigger, elige el team nuevo y conéctalo al IF. Cada proyecto declara su teamId en `projects/<slug>/project.json`.\n3. **Ruta**: si el repo no vive en `C:\\agents\\agent-team-template`, corrige la ruta en el nodo `respond-linear.ps1`.\n4. **Activa** el workflow. Después revisa en Linear → Settings → API → Webhooks que no haya quedado un webhook huérfano (causa respuestas duplicadas).\n\nEl Execute Command resuelve el IssueId con fallback: prueba `data.issue.identifier` (legible, p. ej. ACM-12) y, si no existe, usa `data.issueId` (UUID). El MCP de Linear acepta los dos. Si igual ves `IssueId: undefined` en la stdout (el script falla de forma ruidosa ahí), revisa el payload real con `Listen for test event` y ajusta los campos.\n\n## Convención del trigger (ver memory/agents-roster.md)\n\nEscribe el nombre del agente + `:` al principio del comentario (en CUALQUIER team con project.json):\n- `Capi: ...` → PM, enruta\n- `Numa: ...` → Data\n- `Greta: ...` → Growth\n- `Pico: ...` → Product\n- `Cody: ...` → Code\n- `Qualy: ...` → QA tester (corre tests, revisa previews/logs)\n- `Daly: ...` → UX/UI designer (mockups HTML en design/<proyecto>/, briefs para Cody)\n- `Leda: ...` → Content expert (el rol depende del proyecto: blog, copy de marketing, etc.)\n- `Alfred: ...` → Meta-agente que mejora a los OTROS agentes (delega a run-alfred.ps1 -Job issue; toca el repo de agentes y abre PR)\n\nNo distingue mayúsculas. NO uses `@` (Linear lo interpreta como mention de usuario).\n\nEl agente responde con un comentario que empieza con `🤖 <Nombre> <Emoji>:` — el IF excluye los comentarios que empiezan con 🤖, así no entra en loop.",
+        "height": 380,
+        "width": 420
+      },
+      "id": "note-setup",
+      "name": "LEEME — setup",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        120,
+        60
+      ]
+    },
+    {
+      "parameters": {
+        "teamId": "00000000-0000-0000-0000-000000000000",
+        "resources": [
+          "comment"
+        ]
+      },
+      "id": "trigger-linear",
+      "name": "Linear Trigger (comentarios ACM)",
+      "type": "n8n-nodes-base.linearTrigger",
+      "typeVersion": 1,
+      "position": [
+        260,
+        440
+      ],
+      "credentials": {
+        "linearApi": {
+          "id": "REPLACE_ME",
+          "name": "Linear API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "cond-go",
+              "leftValue": "={{ ($json.action === 'create' && /^(Capi|Numa|Greta|Pico|Cody|Qualy|Daly|Leda|Alfred):/i.test(($json.data.body || '').trim()) && !($json.data.body || '').trim().startsWith('🤖')) ? 'go' : 'skip' }}",
+              "rightValue": "go",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ]
+        }
+      },
+      "id": "if-trigger",
+      "name": "¿trigger de agente y no es del bot?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        520,
+        440
+      ]
+    },
+    {
+      "parameters": {
+        "command": "={{ 'powershell -ExecutionPolicy Bypass -NoProfile -File \"C:\\\\agents\\\\agent-team-template\\\\scripts\\\\respond-linear.ps1\" -IssueId ' + (($json.data.issue && $json.data.issue.identifier) || $json.data.issueId || 'undefined') + ' -AgentName ' + ((($json.data.body || '').match(/^(Capi|Numa|Greta|Pico|Cody|Qualy|Daly|Leda|Alfred):/i)) || [null, 'capi'])[1].toLowerCase() + ((($json.data.issue && $json.data.issue.teamId) || $json.data.teamId) ? (' -TeamId ' + (($json.data.issue && $json.data.issue.teamId) || $json.data.teamId)) : '') }}"
+      },
+      "id": "exec-respond",
+      "name": "respond-linear.ps1",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        780,
+        380
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "log-respond",
+      "name": "Respuesta + costo (stdout)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1020,
+        380
+      ]
+    }
+  ],
+  "connections": {
+    "Linear Trigger (comentarios ACM)": {
+      "main": [
+        [
+          {
+            "node": "¿trigger de agente y no es del bot?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿trigger de agente y no es del bot?": {
+      "main": [
+        [
+          {
+            "node": "respond-linear.ps1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "respond-linear.ps1": {
+      "main": [
+        [
+          {
+            "node": "Respuesta + costo (stdout)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

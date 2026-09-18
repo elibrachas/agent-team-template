@@ -1,0 +1,79 @@
+{
+  "_uso_": "Cron SEMANAL de Greta (growth): revisión AEO (Answer Engine Optimization) de punta a punta → mide el canal 'AI Assistant' de GA4, audita la AEO-readiness del frontend del repo del producto (llms.txt, cobertura de schema, SSR/extractabilidad, entidad) y prueba answer engines vía WebSearch (como proxy) → un [Report] (AEO) + hasta 3-5 [Proposal] (AEO) en Linear + memoria actualizada. Es COMPLEMENTARIO al cron SEO (greta-seo-weekly), no lo reemplaza. Importa a n8n (ver README.md), confirma que el Execute Command corre en el server Windows y actívalo. Cron '0 4 * * 4' = jueves 04:00 (jueves para no chocar con los crons del lunes ni del viernes; horario off-peak porque comparte rate limits de la suscripción con el uso interactivo). run-greta-aeo.ps1 corre en Opus con effort high, escribe el brief en queue/pending-review/, crea los issues en Linear (team del proyecto, Backlog, label aeo) y reescribe aeo-memory.md. Reusa el service account de GA4 + WebSearch built-in: no requiere nada nuevo respecto del cron SEO.",
+  "name": "acme · greta-aeo-weekly (semanal)",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Argentina/Buenos_Aires"
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 4 * * 4"
+            }
+          ]
+        }
+      },
+      "id": "trigger-greta-aeo",
+      "name": "Cron semanal (jue 04:00)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        260,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "command": "powershell -ExecutionPolicy Bypass -NoProfile -File \"C:\\agents\\agent-team-template\\scripts\\run-greta-aeo.ps1\" -Job weekly-review -Project acme"
+      },
+      "id": "exec-greta-aeo",
+      "name": "Run Greta aeo-weekly-review",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        500,
+        300
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "log-greta-aeo",
+      "name": "Resultado (stdout)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        740,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Cron semanal (jue 04:00)": {
+      "main": [
+        [
+          {
+            "node": "Run Greta aeo-weekly-review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Greta aeo-weekly-review": {
+      "main": [
+        [
+          {
+            "node": "Resultado (stdout)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

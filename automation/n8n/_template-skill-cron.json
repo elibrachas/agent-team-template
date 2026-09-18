@@ -1,0 +1,79 @@
+{
+  "_uso_": "Template para automatizar una skill HITL-1 nueva. Copia este archivo, renómbralo a <proyecto>-<skill>.json y reemplaza __PROJECT__ por el slug del proyecto (p. ej. acme), __SKILL__ por el nombre de la skill y __CRON__ por la expresión cron (el mismo valor que el `schedule:` del frontmatter de la SKILL.md). Opcional: agrega `-Model claude-haiku-4-5-20251001` al final del command para abaratar. Reemplaza también la ruta C:\\agents\\agent-team-template si el repo vive en otro lugar. Importa a n8n (ver README.md).",
+  "name": "__PROJECT__ · __SKILL__",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Argentina/Buenos_Aires"
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "__CRON__"
+            }
+          ]
+        }
+      },
+      "id": "trigger-tmpl",
+      "name": "Cron",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        260,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "command": "powershell -ExecutionPolicy Bypass -NoProfile -File \"C:\\agents\\agent-team-template\\scripts\\run-skill.ps1\" -Skill __SKILL__ -Project __PROJECT__"
+      },
+      "id": "exec-tmpl",
+      "name": "Run __SKILL__",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        500,
+        300
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "log-tmpl",
+      "name": "Resultado (stdout)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        740,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Cron": {
+      "main": [
+        [
+          {
+            "node": "Run __SKILL__",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run __SKILL__": {
+      "main": [
+        [
+          {
+            "node": "Resultado (stdout)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

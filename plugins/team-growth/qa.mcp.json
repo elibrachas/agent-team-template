@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json.schemastore.org/mcp.json",
+  "_comment_": "MCP config de Qualy (QA tester). Separado del growth/.mcp.json a proposito: asi los demas agentes y los crons (run-skill.ps1, que tambien carga growth/.mcp.json) NO levantan el browser de Playwright en cada corrida. respond-linear.ps1 elige este archivo cuando el agente tiene McpConfig seteado. Servers: linear (comentar el reporte), supabase read-only (verificar efectos de data, NUNCA PII), playwright (browser real headless para e2e exploratorio).",
+  "mcpServers": {
+    "linear": {
+      "type": "http",
+      "url": "https://mcp.linear.app/mcp",
+      "headers": { "Authorization": "Bearer ${LINEAR_API_KEY}" }
+    },
+    "supabase": {
+      "_comment_": "Read-only, mismo MCP que usan Numa/Greta. Para verificar efectos de data en tests (NUNCA PII, solo agregados).",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@supabase/mcp-server-supabase@latest",
+        "--read-only",
+        "--project-ref=${SUPABASE_PROJECT_REF}"
+      ],
+      "env": { "SUPABASE_ACCESS_TOKEN": "${SUPABASE_ACCESS_TOKEN}" }
+    },
+    "playwright": {
+      "_comment_": "Playwright MCP oficial de Microsoft (@playwright/mcp). Browser real headless para QA exploratorio: navegar, click, snapshot accesible, screenshots, errores de consola/red. Requiere browsers instalados una vez: 'pnpm exec playwright install chromium' en el repo del producto. Flags según github.com/microsoft/playwright-mcp.",
+      "command": "npx",
+      "args": ["-y", "@playwright/mcp@latest", "--headless", "--isolated", "--browser", "chromium"]
+    }
+  }
+}

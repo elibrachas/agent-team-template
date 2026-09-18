@@ -1,0 +1,79 @@
+{
+  "_uso_": "DEPRECADO — reemplazado por el loop de roadmap por proyecto (la skill pm-weekly-digest evolucionó a pm-progress-review: por proyecto, dueña de roadmap.md, lun/mié/vie, vía scripts/run-capi-roadmap.ps1). Se conserva solo como referencia histórica. Si ya lo tenías importado y activas el reemplazo, DESACTIVA este en la UI de n8n (toggle Active off); no lo re-importes ni lo borres del live a ciegas. No agregues crons nuevos sobre este. Histórico: digest semanal de PM cross-proyecto (Capi en Opus), lunes 11:00, -TimeoutMinutes 30.",
+  "name": "core · pm-weekly-digest",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Argentina/Buenos_Aires"
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 11 * * 1"
+            }
+          ]
+        }
+      },
+      "id": "trigger-pm-digest",
+      "name": "Cron",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        260,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "command": "powershell -ExecutionPolicy Bypass -NoProfile -File \"C:\\agents\\agent-team-template\\scripts\\run-skill.ps1\" -Skill pm-weekly-digest -Model claude-opus-4-8 -TimeoutMinutes 30"
+      },
+      "id": "exec-pm-digest",
+      "name": "Run pm-weekly-digest",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        500,
+        300
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "log-pm-digest",
+      "name": "Resultado (stdout)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        740,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Cron": {
+      "main": [
+        [
+          {
+            "node": "Run pm-weekly-digest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run pm-weekly-digest": {
+      "main": [
+        [
+          {
+            "node": "Resultado (stdout)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

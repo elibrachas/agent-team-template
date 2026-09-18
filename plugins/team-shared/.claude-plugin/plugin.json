@@ -1,0 +1,9 @@
+{
+  "name": "team-shared",
+  "version": "0.1.0",
+  "description": "Skills compartidas por todos los plugins: brand voice, glosario, customer personas, design system y pipeline de blog. Leen el contexto de projects/<slug>/.",
+  "author": {
+    "name": "your-org"
+  },
+  "strict": true
+}

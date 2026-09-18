@@ -1,0 +1,7 @@
+{
+  "name": "team-data",
+  "version": "0.1.0",
+  "description": "Queries read-only sobre el warehouse: cohortes, conversión, LTV por canal, revenue y detección de anomalías.",
+  "author": { "name": "your-org" },
+  "strict": true
+}

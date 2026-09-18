@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json.schemastore.org/mcp.json",
+  "_comment_": "MCP default de los agentes de growth/data (lo apunta project.json → mcpConfig). Todos los valores salen de .env.server + .env.<slug>. Los servers de _pending_no_correr son placeholders: verifica el paquete real en el connector registry o arma un wrapper antes de moverlos a mcpServers. NOTA HITL: las notificaciones/aprobaciones de Slack las puede manejar n8n, así que el agente quizá no necesite un MCP de Slack.",
+  "mcpServers": {
+    "supabase": {
+      "_comment_": "Read-only, solo agregados (signups, conversiones, funnel). NUNCA PII. Mismo MCP que team-data.",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@supabase/mcp-server-supabase@latest",
+        "--read-only",
+        "--project-ref=${SUPABASE_PROJECT_REF}"
+      ],
+      "env": { "SUPABASE_ACCESS_TOKEN": "${SUPABASE_ACCESS_TOKEN}" }
+    },
+    "linear": {
+      "_comment_": "MCP remoto oficial de Linear (escribe issues en el team del proyecto, labels agent-proposal/agent-report). Usa la API key como Bearer — sin browser, sirve headless. Verifica la sintaxis de MCP remoto (type http + headers + interpolación de ${VAR}) para tu versión de CLI.",
+      "type": "http",
+      "url": "https://mcp.linear.app/mcp",
+      "headers": { "Authorization": "Bearer ${LINEAR_API_KEY}" }
+    },
+    "ga4": {
+      "_comment_": "MCP oficial de Google Analytics (github.com/googleanalytics/google-analytics-mcp), instalado con pipx (el ejecutable 'analytics-mcp' tiene que estar en el PATH; si no, pon la ruta absoluta). Auth con service account (ADC). Tools: get_account_summaries, get_property_details, list_google_ads_links, run_report, run_funnel_report, get_custom_dimensions_and_metrics, run_realtime_report.",
+      "command": "analytics-mcp",
+      "env": {
+        "GOOGLE_APPLICATION_CREDENTIALS": "${GA4_SERVICE_ACCOUNT_JSON_PATH}",
+        "GOOGLE_PROJECT_ID": "${GOOGLE_PROJECT_ID}"
+      }
+    },
+    "cwv": {
+      "_comment_": "Core Web Vitals (CrUX + PageSpeed Insights), wrapper propio en Node — scripts/mcp-cwv/. Tools: get_cwv_field (CrUX, field data real) y get_cwv_audit (PSI, ~10s, lab + opportunities). Requiere habilitar Chrome UX Report API y PageSpeed Insights API en tu proyecto de GCP.",
+      "command": "node",
+      "args": ["scripts/mcp-cwv/index.mjs"],
+      "env": {
+        "GOOGLE_API_KEY": "${GOOGLE_API_KEY}"
+      }
+    },
+    "stripe": {
+      "_comment_": "MCP remoto oficial de Stripe (https://mcp.stripe.com), auth con una restricted API key (rk_) como Bearer — mismo patrón que Linear, sirve headless. Read-only para diagnóstico de pagos: list_payment_intents, list_disputes, list_subscriptions, list_invoices, retrieve_balance, search_stripe_resources / fetch_stripe_resources. La seguridad la da la restricted key read-only (STRIPE_RESTRICTED_KEY). NUNCA PII al output (emails/nombres/últimos 4) — solo agregados.",
+      "type": "http",
+      "url": "https://mcp.stripe.com",
+      "headers": { "Authorization": "Bearer ${STRIPE_RESTRICTED_KEY}" }
+    }
+  },
+  "_pending_no_correr": {
+    "_comment_": "Ejemplos de servers a sumar según los canales de tu proyecto. Verifica paquete/wrapper antes de activar.",
+    "google-ads": {
+      "_why_": "Para briefs de campañas / reasignación de presupuesto.",
+      "env": {
+        "GOOGLE_ADS_DEVELOPER_TOKEN": "${GOOGLE_ADS_DEVELOPER_TOKEN}",
+        "GOOGLE_ADS_CUSTOMER_ID": "${GOOGLE_ADS_CUSTOMER_ID}",
+        "GOOGLE_ADS_LOGIN_CUSTOMER_ID": "${GOOGLE_ADS_LOGIN_CUSTOMER_ID}"
+      }
+    },
+    "sendgrid": {
+      "_why_": "Para monitorear email lifecycle. Si los logs de envío ya están en tu base, quizá no haga falta.",
+      "env": { "SENDGRID_API_KEY": "${SENDGRID_API_KEY}" }
+    },
+    "meta-ads": {
+      "_why_": "Solo si usas Meta como canal pago.",
+      "env": {
+        "META_ACCESS_TOKEN": "${META_ACCESS_TOKEN}",
+        "META_AD_ACCOUNT_ID": "${META_AD_ACCOUNT_ID}"
+      }
+    },
+    "ahrefs": {
+      "_why_": "Opcional, solo si hay cuenta.",
+      "env": { "AHREFS_API_TOKEN": "${AHREFS_API_TOKEN}" }
+    },
+    "slack": {
+      "_why_": "Notificaciones HITL. Probablemente innecesario si n8n maneja Slack. Actívalo solo si una skill necesita postear directo.",
+      "env": { "SLACK_BOT_TOKEN": "${SLACK_BOT_TOKEN}" }
+    }
+  }
+}

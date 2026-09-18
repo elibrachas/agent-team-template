@@ -1,0 +1,72 @@
+# Secrets
+.env
+.env.*
+!.env.example
+# Templates por proyecto (.env.<slug>.example) SÍ se versionan; los reales (.env.<slug>) no.
+!.env.*.example
+*.pem
+*.key
+secrets/
+.secrets/
+# Google / GCP service-account keys (en cualquier ubicación)
+*service-account*.json
+*-sa.json
+gen-lang-client-*.json
+
+# Runtime state — la cola compartida y el audit log NO se versionan
+queue/pending-review/*
+queue/approved/*
+queue/rejected/*
+!queue/pending-review/.gitkeep
+!queue/approved/.gitkeep
+!queue/rejected/.gitkeep
+audit/*
+!audit/.gitkeep
+
+# Eval results
+evals/results/
+evals/**/output/
+
+# Datos personales (PII) — nunca al repo
+**/personal-data/
+**/pii/
+
+# Editores
+.vscode/
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+.cursorignore
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Node / herramientas auxiliares
+node_modules/
+dist/
+build/
+*.log
+npm-debug.log*
+
+# Python (por si scripts auxiliares)
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Outputs temporales
+*.tmp
+*.bak
+~$*
+
+# Sync de carpetas en la nube (OneDrive/Dropbox) — archivos parciales
+*.~tmp
+
+# Artefactos de runtime / debug (no versionar)
+tmp/
+.playwright-mcp/
+# Screenshots sueltos de debug en la raíz
+/*.png

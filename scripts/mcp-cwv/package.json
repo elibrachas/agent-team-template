@@ -1,0 +1,12 @@
+{
+  "name": "agent-team-mcp-cwv",
+  "version": "0.1.0",
+  "description": "MCP server for Core Web Vitals (CrUX + PageSpeed Insights) — used by Numa and Greta",
+  "private": true,
+  "type": "module",
+  "main": "index.mjs",
+  "bin": "index.mjs",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.18.0"
+  }
+}

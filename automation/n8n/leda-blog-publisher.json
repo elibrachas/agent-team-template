@@ -1,0 +1,79 @@
+{
+  "_uso_": "Cron DIARIO de Leda (content expert). Importa a n8n (ver automation/n8n/README.md), confirma que el Execute Command corre en el server Windows y activa el workflow. Cron '0 3 * * *' = todos los días 03:00, fuera de horas activas para no competir con tu uso interactivo (los rate limits de la suscripción son compartidos). run-skill.ps1 -Skill content-blog-publisher lista drafts elegibles no procesados, los pule con content-blog-improver, genera una imagen (familia visual aleatoria, anti-repetición), programa la publicación a +6h y crea un issue [Content] en Linear con instrucciones para cancelar. El tick horario (leda-publish-tick) hace el cambio a publicado.",
+  "name": "acme · leda-blog-publisher (diario 03:00)",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Argentina/Buenos_Aires"
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 3 * * *"
+            }
+          ]
+        }
+      },
+      "id": "trigger-leda-publisher",
+      "name": "Cron diario (03:00)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        260,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "command": "powershell -ExecutionPolicy Bypass -NoProfile -File \"C:\\agents\\agent-team-template\\scripts\\run-skill.ps1\" -Skill content-blog-publisher -Project acme"
+      },
+      "id": "exec-leda-publisher",
+      "name": "Run content-blog-publisher",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        500,
+        300
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "log-leda-publisher",
+      "name": "Brief + costo (stdout)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        740,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Cron diario (03:00)": {
+      "main": [
+        [
+          {
+            "node": "Run content-blog-publisher",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run content-blog-publisher": {
+      "main": [
+        [
+          {
+            "node": "Brief + costo (stdout)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

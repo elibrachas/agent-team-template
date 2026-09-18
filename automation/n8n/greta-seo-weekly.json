@@ -1,0 +1,79 @@
+{
+  "_uso_": "Cron SEMANAL de Greta (growth): revisión SEO de punta a punta (GA4 + Google Search Console + Core Web Vitals + base de datos + auditoría del frontend del repo del producto) → reporte + hasta 3-5 propuestas en Linear + memoria actualizada. Importa a n8n (ver README.md), confirma que el Execute Command corre en el server Windows y actívalo. Cron '0 4 * * 1' = lunes 04:00 (off-peak: comparte rate limits de la suscripción con el uso interactivo). run-greta-seo.ps1 corre en Opus con effort high, escribe el brief en queue/pending-review/, crea los issues [Report]/[Proposal] (SEO) en Linear (team del proyecto, Backlog) y reescribe seo-memory.md. PREREQUISITO del MCP de GSC (habilitar la Search Console API y agregar el service account a la propiedad): ver docs/server-setup.md.",
+  "name": "acme · greta-seo-weekly (semanal)",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Argentina/Buenos_Aires"
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 4 * * 1"
+            }
+          ]
+        }
+      },
+      "id": "trigger-greta-seo",
+      "name": "Cron semanal (lun 04:00)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        260,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "command": "powershell -ExecutionPolicy Bypass -NoProfile -File \"C:\\agents\\agent-team-template\\scripts\\run-greta-seo.ps1\" -Job weekly-review -Project acme"
+      },
+      "id": "exec-greta-seo",
+      "name": "Run Greta seo-weekly-review",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        500,
+        300
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "log-greta-seo",
+      "name": "Resultado (stdout)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        740,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Cron semanal (lun 04:00)": {
+      "main": [
+        [
+          {
+            "node": "Run Greta seo-weekly-review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Greta seo-weekly-review": {
+      "main": [
+        [
+          {
+            "node": "Resultado (stdout)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

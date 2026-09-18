@@ -1,0 +1,79 @@
+{
+  "_uso_": "Cron SEMANAL de Qualy (QA tester): smoke NO DESTRUCTIVO de los flujos clave de producción. Importa a n8n (ver README.md), confirma que el Execute Command corre en el server Windows y activa el workflow. Cron '0 9 * * 1' = lunes 09:00. run-qualy.ps1 -Job prod-smoke escribe el brief en queue/pending-review/ y crea un issue en Linear (label agent-report, Backlog) SOLO si algo falla.",
+  "name": "acme · qualy-prod-smoke (semanal)",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Argentina/Buenos_Aires"
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 * * 1"
+            }
+          ]
+        }
+      },
+      "id": "trigger-qualy-smoke",
+      "name": "Cron semanal (lun 09:00)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        260,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "command": "powershell -ExecutionPolicy Bypass -NoProfile -File \"C:\\agents\\agent-team-template\\scripts\\run-qualy.ps1\" -Job prod-smoke -Project acme"
+      },
+      "id": "exec-qualy-smoke",
+      "name": "Run Qualy prod-smoke",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        500,
+        300
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "log-qualy-smoke",
+      "name": "Resultado (stdout)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        740,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Cron semanal (lun 09:00)": {
+      "main": [
+        [
+          {
+            "node": "Run Qualy prod-smoke",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Qualy prod-smoke": {
+      "main": [
+        [
+          {
+            "node": "Resultado (stdout)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
