@@ -42,9 +42,9 @@ flowchart LR
 | Pieza | Para qué | ¿Obligatoria? |
 |---|---|---|
 | **Claude Code** con suscripción (login OAuth) o API key | Es el runtime de todos los agentes | Sí |
-| **Linear** (+ API key) | Donde llamas a los agentes y donde dejan su trabajo | Sí, para el modo por comentarios |
+| **Linear** (+ API key) | Donde llamas a los agentes y donde dejan su trabajo | Sí, tal como viene ([alternativas](docs/alternativas.md)) |
 | **GitHub** + `gh` CLI | Cody y Alfred abren PRs | Para Cody y Alfred |
-| **n8n** (self-hosted) | Crons y el listener de comentarios | Para el modo headless |
+| **n8n** (self-hosted) | Crons y el listener de comentarios | Para el modo headless ([alternativas](docs/alternativas.md)) |
 | Una máquina **Windows** siempre prendida | Corre n8n y los wrappers de PowerShell | Para el modo headless (portable a Linux/macOS con `run-skill.sh` como referencia) |
 | Supabase, GA4, Search Console, Stripe… | Fuentes de datos de Numa y Greta, vía MCP | Opcionales: activas solo las que uses |
 
@@ -141,7 +141,7 @@ Checklist completo para sumar un proyecto: [`docs/add-a-new-project.md`](docs/ad
 
 ## Adáptalo
 
-- **Otro tracker o canal**: el listener de Linear está en `automation/n8n/linear-feedback-listener.json` + `scripts/respond-linear.ps1`. El patrón (webhook → regex `^Nombre:` → wrapper → comentario firmado) se porta a GitHub Issues, Slack o Jira.
+- **Sin n8n o sin Linear**: n8n solo dispara scripts (se reemplaza con el Programador de tareas, cron o GitHub Actions); Linear es el tablero y se porta a GitHub Issues, Jira, Notion o Slack manteniendo el mismo patrón. Guía completa, con ejemplos y checklist: [`docs/alternativas.md`](docs/alternativas.md).
 - **Otro sistema operativo**: el runtime vivo es PowerShell sobre Windows; `scripts/run-skill.sh` queda como referencia para Linux/macOS.
 - **Menos agentes**: deshabilítalos en `project.json` (`"enabled": false`). Empieza con Capi + Numa + Cody y suma el resto.
 - **Agentes nuevos**: agrega una entrada en `scripts/agents.ps1`, su nombre a la regex del listener y, si corre por cron, una skill + un workflow basado en `automation/n8n/_template-skill-cron.json`.

@@ -7,6 +7,7 @@ Mapa de la documentación del template. El [README raíz](../README.md) es el pu
 | Doc | Para qué |
 |---|---|
 | [`como-trabajo.md`](como-trabajo.md) | **Por qué está armado así**: el ciclo de trabajo, las lecciones detrás de cada regla y cómo empezar sin montar todo. |
+| [`alternativas.md`](alternativas.md) | **Sin n8n o sin Linear**: cómo reemplazar el disparador (Programador de tareas, cron, GitHub Actions, polling) y portar el tablero a GitHub Issues u otro tracker. |
 | [`como-usar-los-agentes.md`](como-usar-los-agentes.md) | **Manual de uso**: cómo llamar a cada agente en Linear, aprobar/cancelar, qué corre solo por cron y los flujos canónicos. Empieza por aquí. |
 | [`add-a-new-project.md`](add-a-new-project.md) | **Checklist** para sumar un proyecto al equipo de agentes (team de Linear + `projects/<slug>/` + `.env` + smoke tests). |
 | [`server-setup.md`](server-setup.md) | Setup del **server headless** (Windows + n8n): Node + Claude Code CLI, keys, `.env.server`, smoke tests, importar workflows. |
