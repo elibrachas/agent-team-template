@@ -49,7 +49,7 @@
 
 ## Duplicados / overlaps a coordinar
 
-_(Capi anota acá propuestas de distintos agentes que tocan lo mismo y quién debería decidir la secuencia.)_
+_(Capi anota aquí propuestas de distintos agentes que tocan lo mismo y quién debería decidir la secuencia.)_
 
 ## Notas de la corrida
 

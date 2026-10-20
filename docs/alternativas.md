@@ -202,7 +202,7 @@ El mismo port que GitHub Issues: MCP del tracker en los `.mcp.json`, allowlists 
 
 ### 2e. Slack (u otro chat)
 
-Sirve para la **conversación** (`Numa: ¿cómo vino ayer?` en un canal, respuesta en el hilo), pero un chat no es un tablero: las propuestas se pierden en el scroll. Si vas por acá, combínalo con algo que persista: los agentes responden en Slack y crean las propuestas en un tracker (o como archivos en `queue/pending-review/`).
+Sirve para la **conversación** (`Numa: ¿cómo vino ayer?` en un canal, respuesta en el hilo), pero un chat no es un tablero: las propuestas se pierden en el scroll. Si vas por aquí, combínalo con algo que persista: los agentes responden en Slack y crean las propuestas en un tracker (o como archivos en `queue/pending-review/`).
 
 ### 2f. Sin tracker
 

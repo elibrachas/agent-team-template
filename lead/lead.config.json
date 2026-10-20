@@ -1,0 +1,55 @@
+{
+  "$comment": "Config del Project Lead. La leen lead/scripts/*.mjs, el dashboard y la skill. El foco estratégico de cada producto NO se duplica aquí: sale de projects/<slug>/project.json → strategicFocus. Aquí vive solo lo transversal: qué proyectos entran, cuánta atención recibe cada uno, cuánto pesa cada objetivo y los límites del día. Todo es ajustable por el owner: cambia un número y el próximo plan lo respeta. Para sumar un proyecto: agrega una entrada a `projects` (slug = la carpeta de projects/<slug>/, teamKey = la key de su team en Linear) y reparte `attentionShare` entre todos para que sume 1.0. Ejemplo con dos: Acme (ACM) 0.6 y Beta (BET) 0.4 → a igual mérito gana la tarea de Acme, y en la semana Acme se lleva más o menos 6 de cada 10 lugares del plan; lo roto o expuesto entra igual, sea del proyecto que sea.",
+  "linearWorkspace": "tu-workspace",
+  "projects": [
+    {
+      "slug": "acme",
+      "teamKey": "ACM",
+      "name": "Acme",
+      "attentionShare": 1.0,
+      "northStar": "TODO(acme): tu norte en una oración: la métrica que mueve el negocio, dónde está hoy y adónde quieres llevarla. Ej.: «Conversión free→paid de X% a Y%; el cuello está en la activación».",
+      "objectiveWeights": { "revenue": 1.0, "security": 0.9, "traffic": 0.8, "measurement": 0.7, "reliability": 0.7, "quality": 0.5, "agents": 0.5, "hygiene": 0.3 }
+    }
+  ],
+  "objectives": {
+    "revenue": { "label": "Facturación", "hint": "Mueve conversión, ticket, recompra o cobro." },
+    "traffic": { "label": "Visitas", "hint": "SEO, AEO, contenido, adquisición." },
+    "security": { "label": "Seguridad", "hint": "Exposición de datos, auth, dependencias vulnerables, abuso." },
+    "reliability": { "label": "Confiabilidad", "hint": "Que prod y los crons no se caigan ni fallen en silencio." },
+    "measurement": { "label": "Medición", "hint": "Instrumentación que destraba leer el resultado de otra palanca." },
+    "quality": { "label": "Calidad de producto", "hint": "Que lo que el usuario ve y usa esté bien." },
+    "agents": { "label": "Sistema de agentes", "hint": "Que el equipo de agentes trabaje mejor." },
+    "hygiene": { "label": "Higiene técnica", "hint": "Tipos, tests, refactors: se hace al tocar el área." }
+  },
+  "limits": {
+    "$comment": "El recurso escaso es la atención del owner, no la capacidad de los agentes. Estos topes existen para que lo que se arranca se termine: pocas tareas a la vez, seguidas hasta producción. `tasksInFlight`, `planItemsMax` y `ownerMinutesPerDay` los valida el CLI al instalar el plan; `codyDispatchesPerRepoPerDay` y `openPrsBeforeNewDispatch` son reglas de la skill.",
+    "tasksInFlight": 3,
+    "planItemsMax": 7,
+    "ownerMinutesPerDay": 60,
+    "codyDispatchesPerRepoPerDay": 2,
+    "openPrsBeforeNewDispatch": 3,
+    "proposalStaleDays": 45,
+    "recordAutoArchiveDays": 2
+  },
+  "autonomy": {
+    "$comment": "Qué hace el lead SIN esperar un sí. La regla: si algo es de bajo riesgo, lo hace e informa. En true va lo que solo constata un hecho y se deshace con un click; en false, lo que arranca trabajo nuevo o decide por el owner. Nunca entran aquí, estén como estén estos flags: mergear un PR, cancelar una propuesta, tocar secretos o plata.",
+    "archiveRecords": true,
+    "closeObviousDuplicates": true,
+    "closeVerifiedDone": true,
+    "setPriority": true,
+    "followThrough": true,
+    "dispatchReadOnlyAgents": false,
+    "dispatchCodingAgents": false,
+    "sendAlfredRecommendations": false
+  },
+  "alfred": {
+    "$comment": "El team de Linear donde el lead crea los [Retro] para Alfred: tiene que ser uno que barra su corrida diaria (scripts/run-alfred.ps1 -Job sweep -Project <slug>) y tener el label «alfred». Sin este dato se usa el team del primer proyecto.",
+    "teamKey": "ACM"
+  },
+  "agentsRepo": "tu-org/agent-team-template",
+  "sync": {
+    "closedDays": 45,
+    "mergedPrDays": 14,
+    "shippedDays": 45
+  }
+}

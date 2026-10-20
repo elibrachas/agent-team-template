@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/mcp.json",
-  "_comment_": "MCP default de los agentes de growth/data (lo apunta project.json → mcpConfig). Todos los valores salen de .env.server + .env.<slug>. Los servers de _pending_no_correr son placeholders: verifica el paquete real en el connector registry o arma un wrapper antes de moverlos a mcpServers. NOTA HITL: las notificaciones/aprobaciones de Slack las puede manejar n8n, así que el agente quizá no necesite un MCP de Slack.",
+  "_comment_": "MCP default de los agentes de growth/data (lo apunta project.json → mcpConfig). Todos los valores salen de .env.server + .env.<slug>; los ${VAR:-} degradan a vacío y el server responde 'fuente no configurada' en vez de fallar. Los servers de _pending_no_correr son placeholders o wrappers opcionales: verifica el paquete real en el connector registry (o configura el wrapper) antes de moverlos a mcpServers. NOTA HITL: las notificaciones/aprobaciones de Slack las puede manejar n8n, así que el agente quizá no necesite un MCP de Slack.",
   "mcpServers": {
     "supabase": {
       "_comment_": "Read-only, solo agregados (signups, conversiones, funnel). NUNCA PII. Mismo MCP que team-data.",
@@ -40,16 +40,40 @@
       "type": "http",
       "url": "https://mcp.stripe.com",
       "headers": { "Authorization": "Bearer ${STRIPE_RESTRICTED_KEY}" }
+    },
+    "vercel": {
+      "_comment_": "Vercel READ-ONLY (wrapper propio en Node, scripts/mcp-vercel/): deploys, build logs y errores de runtime. El pin de proyectos sale de project.json → vercel ({ teamId, projects: [{ key, id, name, role }] }) y lo exporta scripts/project.ps1 como VERCEL_TEAM_ID / VERCEL_PROJECTS: son los ÚNICOS proyectos de Vercel que un agente del proyecto puede leer. Solo GET y salida redactada: el token (VERCEL_API_TOKEN, en .env.server) es de TODO el team y Vercel no ofrece tokens read-only, por eso los agentes nunca lo usan por curl ni por el CLI. Logs de runtime: ~24 h de retención. Sin token o sin pin, cada tool responde 'fuente Vercel no configurada' y el agente degrada declarándolo. Requiere npm ci en scripts/mcp-vercel (una vez por máquina). Detalle: docs/vercel-readonly-source.md. Tools habilitadas (mcp__vercel__*) solo para Numa, Greta, Pico, Cody y Qualy; el resto del loadout default no las tiene en su allowlist. En una corrida interactiva sin wrapper el pin no se exporta: el MCP usa VERCEL_PROJECT_ID (un solo proyecto) si está en el entorno.",
+      "command": "node",
+      "args": ["scripts/mcp-vercel/index.mjs"],
+      "env": {
+        "VERCEL_API_TOKEN": "${VERCEL_API_TOKEN:-}",
+        "VERCEL_TEAM_ID": "${VERCEL_TEAM_ID:-}",
+        "VERCEL_PROJECTS": "${VERCEL_PROJECTS:-}",
+        "VERCEL_PROJECT_ID": "${VERCEL_PROJECT_ID:-}"
+      }
+    },
+    "google-ads": {
+      "_comment_": "MCP OFICIAL de Google Ads (github.com/googleads/google-ads-mcp, PyPI google-ads-mcp), instalado como tool de Python aislada: pipx, o `uv tool` en un server sin Python (uv trae el suyo). El ejecutable 'google-ads-mcp' tiene que estar en el PATH; si no, pon la ruta absoluta. SOLO LECTURA: 3 tools, todas readOnlyHint — search_search (GAQL, siempre SELECT), metadata_get_resource_metadata y customers_list_accessible_customers; no hay tool que cree, pause ni cambie campañas. Google Ads no tiene scope OAuth read-only, así que el solo-lectura de verdad lo pone el rol: la service account de GA4 (misma key, GA4_SERVICE_ACCOUNT_JSON_PATH) se agrega a la cuenta de Google Ads con rol «Solo lectura». El acceso a la API lo da el proyecto de GCP de esa service account (Google Ads API habilitada); revisa los requisitos vigentes en docs/google-ads-readonly-source.md. NO setees GOOGLE_ADS_MCP_OAUTH_CLIENT_ID/SECRET: pasan el server a HTTP. GOOGLE_ADS_LOGIN_CUSTOMER_ID solo si accedes vía una cuenta administradora (MCC). Tools mcp__google-ads__* solo para Numa y Greta.",
+      "command": "google-ads-mcp",
+      "env": {
+        "GOOGLE_APPLICATION_CREDENTIALS": "${GA4_SERVICE_ACCOUNT_JSON_PATH}",
+        "GOOGLE_ADS_LOGIN_CUSTOMER_ID": "${GOOGLE_ADS_LOGIN_CUSTOMER_ID:-}"
+      }
     }
   },
   "_pending_no_correr": {
-    "_comment_": "Ejemplos de servers a sumar según los canales de tu proyecto. Verifica paquete/wrapper antes de activar.",
-    "google-ads": {
-      "_why_": "Para briefs de campañas / reasignación de presupuesto.",
+    "_comment_": "Ejemplos de servers a sumar según los canales y la base de tu proyecto. Verifica paquete/wrapper antes de activar. Google Ads ya está en mcpServers (read-only, MCP oficial).",
+    "mysql": {
+      "_why_": "Si la base de la app es MySQL (además de, o en vez de, Supabase): wrapper propio en Node, scripts/mcp-mysql/, con guard read-only (una sola sentencia de lectura, sin SELECT *, sin columnas de secreto/PII: MYSQL_DENY_COLUMNS). Usa un usuario de base con GRANT de lectura por columna; si la base no es accesible desde el server, por un túnel SSH local. Sin vars, cada tool devuelve 'fuente MySQL no configurada'. Requiere npm ci en scripts/mcp-mysql. Detalle: docs/mysql-readonly-source.md. Para activarlo, muévelo a mcpServers (o a la config MCP propia del proyecto).",
+      "command": "node",
+      "args": ["scripts/mcp-mysql/index.mjs"],
       "env": {
-        "GOOGLE_ADS_DEVELOPER_TOKEN": "${GOOGLE_ADS_DEVELOPER_TOKEN}",
-        "GOOGLE_ADS_CUSTOMER_ID": "${GOOGLE_ADS_CUSTOMER_ID}",
-        "GOOGLE_ADS_LOGIN_CUSTOMER_ID": "${GOOGLE_ADS_LOGIN_CUSTOMER_ID}"
+        "MYSQL_HOST": "${MYSQL_HOST:-}",
+        "MYSQL_PORT": "${MYSQL_PORT:-3306}",
+        "MYSQL_DATABASE": "${MYSQL_DATABASE:-}",
+        "MYSQL_USER": "${MYSQL_USER:-}",
+        "MYSQL_PASSWORD": "${MYSQL_PASSWORD:-}",
+        "MYSQL_DENY_COLUMNS": "${MYSQL_DENY_COLUMNS:-}"
       }
     },
     "sendgrid": {

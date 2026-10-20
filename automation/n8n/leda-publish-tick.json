@@ -1,6 +1,6 @@
 {
-  "_uso_": "Cron HORARIO de Leda (tick). Importa a n8n y actívalo. Cron '0 * * * *' = cada hora en punto. run-skill.ps1 -Skill content-blog-publish-tick lista posts con ledaStatus=scheduled cuya ledaPublishAt ya pasó, verifica la señal de cancelación (comentario 'Leda: stop' en el issue [Content] o estado Cancelled) y cambia _status='published' si corresponde. Usa Sonnet (el modelo de Leda en agents.ps1): con Haiku el agente a veces alucinaba que no podía ejecutar PowerShell y no publicaba. Costo objetivo < US$0,30 por corrida.",
-  "name": "acme · leda-publish-tick (cada 1h, Sonnet)",
+  "_uso_": "Cron DIARIO de Leda (tick). Importa a n8n y actívalo. Cron '0 8 * * *' = una vez por día, 08:00. Un tick horario no hace falta: cada nota del publisher (madrugada, ledaPublishAt a media mañana) sale con el tick de la mañana siguiente, y hasta ese tick se puede frenar con 'Leda: stop'. run-skill.ps1 -Skill content-blog-publish-tick lista posts con ledaStatus=scheduled cuya ledaPublishAt ya pasó, verifica la señal de cancelación (comentario 'Leda: stop' en el issue [Content] o estado Cancelled) y cambia _status='published' si corresponde. Sin posts vencidos, el wrapper sale sin llamar a claude (pre-check con leda-helpers.ps1 list-scheduled-due; -NoPreCheck lo saltea). Usa Sonnet (el modelo de Leda en agents.ps1; este JSON no pasa -Model): con Haiku el agente a veces alucinaba que no podía ejecutar PowerShell y no publicaba. Costo objetivo < US$0,30 por corrida con posts. Antes de tocar el workflow vivo, exporta la versión live y compárala con este archivo (ver README.md).",
+  "name": "acme · leda-publish-tick (diario 08:00, Sonnet)",
   "active": false,
   "settings": {
     "executionOrder": "v1",
@@ -13,13 +13,13 @@
           "interval": [
             {
               "field": "cronExpression",
-              "expression": "0 * * * *"
+              "expression": "0 8 * * *"
             }
           ]
         }
       },
       "id": "trigger-leda-tick",
-      "name": "Cron horario",
+      "name": "Cron diario (08:00)",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
       "position": [
@@ -53,7 +53,7 @@
     }
   ],
   "connections": {
-    "Cron horario": {
+    "Cron diario (08:00)": {
       "main": [
         [
           {

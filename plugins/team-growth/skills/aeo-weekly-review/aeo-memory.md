@@ -21,7 +21,7 @@
 
 ## Reglas de edición
 
-- **La disposición real vive en Linear**: el estado del issue manda. Greta reconcilia esta tabla cada semana leyendo el estado del issue linkeado en `issue`.
+- **La disposición real vive en Linear**: el estado del issue manda. Greta reconcilia esta tabla cada semana leyendo el estado del issue linkeado en `issue`. **Excepción**: si el estado de Linear contradice lo verificado en prod (p. ej. `Done` pero la columna o la feature no existe), la evidencia de prod manda para la disposición del ledger y se anota la discrepancia.
 - `id` = **slug estable** del hallazgo (ej. `aeo-llms-txt-ausente`, `aeo-faq-coverage-guias`, `aeo-ai-channel-trend`). **Reusa el mismo `id` entre semanas** — es la clave del dedupe.
 - `primera-vez` / `última-vez` en `YYYY-MM-DD`. `última-vez` = la última corrida en la que el hallazgo seguía vigente.
 - `issue` = id del issue de Linear (ej. `ACM-12`) o vacío si todavía no se creó issue. Si el dueño del issue es SEO (mejora compartida), anótalo en la nota.

@@ -18,7 +18,7 @@ owner: owner
 
 - **Productos y surfaces**: nombre canónico de cada producto, plan, feature y página clave.
 - **Métricas core**: definición exacta (numerador, denominador, ventana, filtros — p. ej. "solo pagos con monto > 0", "monedas por separado").
-- **Canales de adquisición**: buckets canónicos y cómo se derivan.
+- **Canales de adquisición**: buckets canónicos y cómo se derivan (incluido un bucket para el tráfico que llega desde asistentes de IA, si el producto lo captura). Aclara si el canal de una plataforma de ads equivale a un clic pago o también incluye `utm_source` sin click-id.
 - **Funnel comercial**: etapas en orden, con el evento/campo que marca cada una.
 - **Estados de pago** y qué cuenta como venta.
 - **Segmentos de usuario** (free, pagador, recurrente, etc.).

@@ -1,0 +1,14 @@
+# Claves PÚBLICAS de age a las que se cifra .env.local.age (una por línea).
+# Copia este archivo a .age-recipients (también se commitea: las claves públicas no son secretas).
+#
+# La clave privada de cada máquina vive fuera del repo, en ~/.config/sops/age/keys.txt (o donde
+# diga AGE_KEY_FILE), y nunca sale de esa máquina. Para sumar una máquina:
+#   age-keygen -o "$env:USERPROFILE\.config\sops\age\keys.txt"   # si todavía no tiene clave
+#   age-keygen -y "$env:USERPROFILE\.config\sops\age\keys.txt"   # imprime su clave pública
+# agrega esa línea aquí con un comentario que diga de qué máquina es, y corre `npm run env:encrypt`
+# desde una máquina que ya tenga acceso a 1Password. Guía: docs/secretos.md.
+
+# tu-laptop (Windows)
+# age1xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+# el-server (Windows)
+# age1xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx

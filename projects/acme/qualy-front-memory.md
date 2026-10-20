@@ -19,10 +19,10 @@
 - **La disposición real vive en Linear**: el estado del issue manda. Qualy reconcilia esta tabla cada corrida.
 - `id` = **slug estable** del hallazgo (p. ej. `csp-report-only`, `dep-vuln-<paquete>`, `flow-checkout-mobile-overflow`). **Reusa el mismo `id` entre corridas** — es la clave del dedupe.
 - `área` = `sec` (seguridad) · `front` (calidad/UI) · `flow` (flujo roto/degradado).
-- `sev` = 🔴 alta · 🟡 media · 🟢 baja/info (🟢 normalmente NO crea issue; va al brief y se trackea acá si conviene).
+- `sev` = 🔴 alta · 🟡 media · 🟢 baja/info (🟢 normalmente NO crea issue; va al brief y se trackea aquí si conviene).
 - `primera-vez` / `última-vez` en `YYYY-MM-DD`.
 - `issue` = id del issue de Linear (p. ej. `ACM-40`) o vacío si no se creó.
-- Hallazgos ya documentados en el baseline de seguridad del producto (si existe; ver `agent-overrides/qualy.md`): trackéalos acá con su id de baseline en la **nota**, y no crees issue salvo que verifiques que siguen abiertos.
+- Hallazgos ya documentados en el baseline de seguridad del producto (si existe; ver `agent-overrides/qualy.md`): trackéalos aquí con su id de baseline en la **nota**, y no crees issue salvo que verifiques que siguen abiertos.
 
 ## Ledger
 

@@ -1,0 +1,27 @@
+{
+  "$comment": "EJEMPLO de seed inicial del banco de ideas del blog de Acme (collection `topics` del CMS). Es el archivo que scripts/seed-topics.ps1 -Project acme carga por default (para otro archivo: -SeedFile <ruta>; con -DryRun muestra qué crearía sin llamar al CMS). Deduplica por keyword contra todo el banco: re-correrlo es seguro. Después del seed, el banco lo alimenta cada semana la skill content-topic-scan de Leda. Schema = el de la collection: keyword (la búsqueda tal como la escribiría el lector; `refresh: <slug>` para reescribir una nota publicada), audience (los valores de tu collection), cluster (slug de una categoría de blog-taxonomy.md), intent (info | commercial | transactional), priority (1 alta … 3 baja), brief (ángulo, respuesta directa, qué no prometer, a qué enlazar), internalLinks (paths, uno por línea), ctaTarget (los valores de tu collection), status = idea. Reemplaza estos topics por los tuyos: son ilustrativos.",
+  "topics": [
+    {
+      "keyword": "cómo hacer un presupuesto para un cliente paso a paso",
+      "audience": "general",
+      "cluster": "presupuestos",
+      "intent": "info",
+      "priority": 1,
+      "brief": "Respuesta directa arriba: qué tiene que tener un presupuesto (alcance, entregables, plazos, precio, validez, condiciones de pago). Checklist de 8-10 puntos y un ejemplo armado. Errores comunes (alcance vago, sin fecha de validez). No prometer que un presupuesto 'cierra' la venta. Enlazar a la plantilla y a la nota de seguimiento.",
+      "internalLinks": "/pricing\n/blog/plantilla-de-presupuesto",
+      "ctaTarget": "signup",
+      "status": "idea"
+    },
+    {
+      "keyword": "cuánto cobrar por hora como freelancer",
+      "audience": "general",
+      "cluster": "precios-y-cobros",
+      "intent": "info",
+      "priority": 2,
+      "brief": "Método en pasos para calcular la tarifa (costos fijos, horas facturables reales, margen) con un ejemplo numérico explícito. Datos de mercado solo con fuente y fecha. No dar 'la tarifa correcta': dar el método. Cerrar con cómo presentar esa tarifa en un presupuesto.",
+      "internalLinks": "/blog/como-hacer-un-presupuesto\n/pricing",
+      "ctaTarget": "signup",
+      "status": "idea"
+    }
+  ]
+}

@@ -77,8 +77,17 @@ if ($env:GH_TOKEN) {
 . "$PSScriptRoot\agents.ps1"
 . "$PSScriptRoot\project.ps1"
 $projectObj = Resolve-ProjectContext -Slug $Project
+# Los repos del producto al día antes de leerlos (Sync-ProjectRepos en project.ps1).
+if (-not $DryRun) { Sync-ProjectRepos -Project $projectObj }
 $ownerName = Get-ProjectOwnerName -Project $projectObj
 $signature = Get-AgentSignature -Name 'pico'
+
+# Aviso por Discord, además del issue (opcional y POR PROYECTO): project.json ->
+# shippedDigestDiscordWebhookVar trae el NOMBRE de la env var con el webhook, nunca el webhook.
+# Sirve, p. ej., para que el resumen salga en el mismo canal que el pulso diario de Numa
+# (DISCORD_WEBHOOK_NUMA). Sin esa clave, o con la var vacía, no se postea.
+$discordVar = if ($projectObj.PSObject.Properties['shippedDigestDiscordWebhookVar']) { [string]$projectObj.shippedDigestDiscordWebhookVar } else { '' }
+$discordUrl = if ($discordVar) { [Environment]::GetEnvironmentVariable($discordVar) } else { $null }
 
 $stamp = Get-Date -Format "yyyy-MM-dd"
 $out = "queue/pending-review/$stamp-$($projectObj.slug)-product-shipped-digest.md"
@@ -90,12 +99,20 @@ $mcpConfig = ".\$($projectObj.mcpConfig)"
 $skillPath = "plugins/team-pm/skills/product-shipped-digest/SKILL.md"
 $roadmapPath = Join-Path $projectObj.contextDir 'roadmap.md'
 
-# Lectura del repo del producto (git log + archivos). $repoPath = ruta resuelta.
-$addDirArgs = @()
+# Lectura de los repos del producto (git log + archivos). $repoPath = el primario resuelto.
+# Multi-repo: montamos TODOS los repos de productRepos — en un producto multi-repo
+# "qué se actualizó en la app" incluye el portal, el core, el sitio... no solo el repo de Cody.
+# Sin productRepos, Get-ProjectRepos devuelve solo el primario → igual que siempre.
+$addDirArgs = Get-ProjectRepoAddDirArgs -Project $projectObj -Who 'Pico (shipped)'
 $repoPath = $projectObj.productRepoPath
 $resolvedRepo = Resolve-Path -Path $projectObj.productRepoPath -ErrorAction SilentlyContinue
-if ($resolvedRepo) { $repoPath = $resolvedRepo.Path; $addDirArgs += @('--add-dir', $resolvedRepo.Path) }
-else { Write-Warning "No encontré $($projectObj.productRepoPath) — el report correrá degradado (sin commits del repo, solo Linear)." }
+if ($resolvedRepo) { $repoPath = $resolvedRepo.Path }
+else { Write-Warning "No encontré $($projectObj.productRepoPath) — el report correrá degradado (sin commits del repo primario)." }
+$repoLines = foreach ($r in (Get-ProjectRepos -Project $projectObj)) {
+  $rp = Resolve-Path -Path $r.path -ErrorAction SilentlyContinue
+  if ($rp) { "  - ``$($r.key)`` → $($rp.Path) — $($r.role)" } else { "  - ``$($r.key)`` → $($r.path) — NO está en disco (decláralo como no revisado)" }
+}
+$repoBlock = $repoLines -join "`n"
 
 # Seguidoras a sumar al issue: POR PROYECTO (project.json -> shippedDigestFollowers).
 # Cada proyecto lista a las personas que quieren recibir el digest (puede ser vacío).
@@ -110,26 +127,37 @@ $followersDirective = if ($followers) {
   "- SEGUIDORAS: este proyecto no tiene seguidoras configuradas (project.json -> shippedDigestFollowers vacío). No agregues a nadie como seguidor."
 }
 
+# Resumen para Discord: solo si el proyecto lo pide Y la var tiene valor (si no, no le pedimos al
+# agente un bloque que nadie va a postear). Comillas simples: el texto es literal.
+$discordDirective = if ($discordUrl) {
+  '- DISCORD (además del issue, NO en su lugar): cierra tu respuesta final con un resumen para Discord entre una línea <discord> y una línea </discord>. El wrapper postea SOLO lo que está entre esas marcas. Formato: primera línea en negrita con el nombre del producto y la semana; después 4 a 8 viñetas con lo que salió, agrupado por superficie y empezando por lo que ve un usuario; una línea con las superficies sin cambios, si las hay; y al final el link al issue [Report] que creaste, entre < y > para que no arme vista previa. Máximo 1500 caracteres. Markdown de Discord: sin tablas, sin encabezados y sin links con texto. En el mismo idioma que el issue. Sin nombres ni emails de personas.'
+} else { '' }
+$discordTask = if ($discordUrl) { ' Cierra la respuesta con el bloque <discord> que pide el system.' } else { '' }
+
 # System prompt: Pico en MODO REPORT SEMANAL DE CAMBIOS (read-only). El método vive en el SKILL.
 $systemPrompt = @"
 Eres Pico, el product manager de $($projectObj.name), corriendo tu REPORTE SEMANAL de "qué se actualizó en la app" (cron, sin issue de Linear de origen). Este turno es READ-ONLY: miras lo que shipeó y lo reportas; NO escribes código ni archivos.
 
 Tu método completo está en la skill: LEE y sigue al pie el archivo $skillPath (usa el tool Read). No improvises el método; está todo ahí.
 
-Contexto del proyecto: team Linear $($projectObj.linear.teamKey); repo del producto en $repoPath ($($projectObj.productStack)); foco estratégico — $($projectObj.strategicFocus).
+Contexto del proyecto: team Linear $($projectObj.linear.teamKey); stack: $($projectObj.productStack); foco estratégico — $($projectObj.strategicFocus).
+
+Repos del producto (revisa TODOS — si hay más de uno, el producto es multi-repo y "la app" es la suma):
+$repoBlock
 
 Reglas duras de este turno (HARD STOPS):
-- READ-ONLY total. Con Bash, SOLO comandos de LECTURA: `git -C $repoPath fetch origin` (no toca el working tree), `git -C $repoPath log/show/diff/status`, y opcionalmente `gh pr list ... --state merged` (read-only). PROHIBIDO: git add/commit/push/branch/checkout/reset/rebase/merge, gh pr create/merge, installs, build, y cualquier comando que modifique el repo. No tienes tools Edit/Write.
-- Ventana: últimos 7 días. Agrupa los commits por tema (no listes la lista cruda). Extrae las refs a Linear (Cody comitea con 'Refs $($projectObj.linear.teamKey)-X').
+- READ-ONLY total. Con Bash, SOLO comandos de LECTURA, sobre CADA repo de la lista: `git -C <repo> fetch origin` (no toca el working tree), `git -C <repo> log origin/main ...` / `show` / `diff` / `status` (usa origin/main: el checkout local puede estar en otra rama), y opcionalmente `gh pr list ... --state merged` (read-only). PROHIBIDO: git add/commit/push/branch/checkout/reset/rebase/merge, gh pr create/merge, installs, build, y cualquier comando que modifique un repo. No tienes tools Edit/Write.
+- Ventana: últimos 7 días. Agrupa los commits por tema (no listes la lista cruda) y, si hay varios repos, **por superficie** (ej. sitio / app / portal / core), diciendo qué repo no tuvo cambios. Extrae las refs a Linear (Cody comitea con 'Refs $($projectObj.linear.teamKey)-X').
 - LEE $roadmapPath para mapear lo shipeado contra el plan, pero NO lo reescribas (es de Capi).
 - Salida en Linear (team $($projectObj.linear.teamKey)): UN issue [Report] 'Qué se actualizó en la app — semana $stamp' (label agent-report, Backlog, sin asignar). Si ya existe el de esta semana, comenta en vez de duplicar. Al final del body, '---' + 'Generado por $signature'.
 $followersDirective
+$discordDirective
 - Si git/gh fallan, repórtalo y arma el report con lo que tengas de Linear. No inventes commits ni PRs.
 
 Devuelve el brief completo en markdown como tu respuesta final (lo guarda el wrapper en $out). Empieza el brief con '${signature}:' y un resumen corto.
 "@
 
-$userTask = "Ejecuta AHORA tu reporte semanal de qué se actualizó en la app: lee $skillPath y síguelo al pie. No me describas el plan — corre git log (read-only) sobre $repoPath, cruza contra Linear y $roadmapPath, crea el [Report], suma las seguidoras configuradas del proyecto (ver la directiva de SEGUIDORAS en el system), y devuelve el brief final en markdown. Recuerda: SIN editar/comitear/pushear nada."
+$userTask = "Ejecuta AHORA tu reporte semanal de qué se actualizó en la app: lee $skillPath y síguelo al pie. No me describas el plan — corre git log (read-only) sobre CADA repo del producto listado en el system, cruza contra Linear y $roadmapPath, crea el [Report], suma las seguidoras configuradas del proyecto (ver la directiva de SEGUIDORAS en el system), y devuelve el brief final en markdown.$discordTask Recuerda: SIN editar/comitear/pushear nada."
 
 if ($DryRun) {
   "=== DRY RUN run-pico-shipped (no se llamó a claude) ==="
@@ -138,8 +166,10 @@ if ($DryRun) {
   "MCP      : $mcpConfig"
   "Allowed  : $allowed   <-- read-only: SIN Edit/Write"
   "RepoPath : $repoPath  (Test-Path: $(Test-Path $repoPath))"
+  "Repos    :"; $repoBlock
   "Roadmap  : $roadmapPath  (Test-Path: $(Test-Path $roadmapPath))"
   "Followers: $(if ($followers) { $followers } else { '(ninguna configurada)' })"
+  "Discord  : $(if (-not $discordVar) { '(este proyecto no lo pide)' } elseif ($discordUrl) { "$discordVar → configurado ($($discordUrl.Length) chars)" } else { "$discordVar → VACÍA — no se va a postear (cárgala en .env.$($projectObj.slug))" })"
   "gh token : $(if ($env:GH_TOKEN) { 'presente (git fetch + gh autenticados via extraheader)' } else { 'AUSENTE (git fetch de repo privado puede fallar; configura GH_TOKEN en .env.server)' })"
   "AddDirs  : $(if ($addDirArgs) { $addDirArgs -join ' ' } else { '(ninguno)' })"
   "Out      : $out"
@@ -185,6 +215,18 @@ $parsed.result
 "---"
 "Brief: $out | Project: $($projectObj.slug) | Model: $Model"
 "Costo USD: $($parsed.total_cost_usd) | Duración: $([math]::Round($durationS))s"
+
+# Aviso por Discord: solo el bloque <discord>…</discord>, y solo si la corrida salió bien. El
+# brief entero no se postea nunca: es largo, y sin las marcas no sabemos qué quiso mandar el agente.
+if ($discordVar) {
+  if (-not $discordUrl) { Write-Warning "shippedDigestDiscordWebhookVar = $discordVar, pero la var está vacía — no posteé a Discord (cárgala en .env.$($projectObj.slug))." }
+  elseif ($exit -ne 0 -or $parsed.is_error -or -not [string]$parsed.result) { Write-Warning "La corrida falló — no posteo a Discord un resultado roto." }
+  else {
+    $discordMsg = Get-DiscordBlock -Text ([string]$parsed.result)
+    if (-not $discordMsg) { Write-Warning "El resultado no trae <discord>…</discord> — no posteé a Discord. El report está en Linear y en $out." }
+    elseif (Send-DiscordMessage -WebhookUrl $discordUrl -Text $discordMsg -Username 'Pico') { "Discord: enviado ($discordVar, $($discordMsg.Length) caracteres)." }
+  }
+}
 
 if ($exit -ne 0 -or $parsed.is_error) {
   Write-Error "run-pico-shipped falló para $($projectObj.slug) (exit $exit, is_error=$($parsed.is_error))"

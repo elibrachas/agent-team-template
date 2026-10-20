@@ -1,0 +1,21 @@
+{
+  "name": "agent-team-template",
+  "private": true,
+  "scripts": {
+    "env:push": "node scripts/op-env.mjs push",
+    "env:template": "node scripts/op-env.mjs template",
+    "env:check": "node scripts/op-env.mjs check",
+    "env:doctor": "node scripts/op-env.mjs doctor",
+    "env:pull": "node scripts/op-env.mjs pull",
+    "env:purge": "node scripts/op-env.mjs purge",
+    "env:encrypt": "node scripts/op-env.mjs encrypt",
+    "lead:sync": "node lead/scripts/sync.mjs",
+    "lead:status": "node lead/scripts/lead.mjs status",
+    "lead:follow": "node lead/scripts/lead.mjs follow",
+    "lead:dashboard": "node lead/app/server.mjs --open",
+    "lead:start": "node lead/scripts/start-dashboard.mjs",
+    "lead:stop": "node lead/scripts/start-dashboard.mjs --stop",
+    "lead:simulacion": "node lead/app/server.mjs --dry-run --port=4748 --open",
+    "lead:selftest": "node lead/scripts/selftest.mjs"
+  }
+}

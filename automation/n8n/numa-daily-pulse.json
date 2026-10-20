@@ -1,0 +1,79 @@
+{
+  "_uso_": "Pulso DIARIO del funnel de Numa 📊 → Discord. Todos los días 08:30. Corre run-skill.ps1 -Skill funnel-daily-pulse -Project acme -DiscordWebhookVar DISCORD_WEBHOOK_NUMA: Numa lee las últimas 24 h (base del producto, pagos, GA4) contra el promedio de los 7 días anteriores y devuelve UN mensaje corto; el WRAPPER lo postea al webhook de Discord (no crea issue en Linear). Es un pulso, no el análisis: el monitor semanal del funnel sigue siendo el análisis completo. La skill es DEL PROYECTO (projects/acme/skills/funnel-daily-pulse/SKILL.md). Requisitos: DISCORD_WEBHOOK_NUMA en .env.acme (el NOMBRE de la variable va en el comando; el webhook nunca en el JSON) y las fuentes de datos accesibles desde el server (si la base es MySQL detrás de un túnel, el túnel arriba). Importa inactivo → Execute Workflow → activa.",
+  "name": "acme · numa-daily-pulse (diario 08:30 → Discord)",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Argentina/Buenos_Aires"
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "30 8 * * *"
+            }
+          ]
+        }
+      },
+      "id": "trigger-numa-daily-pulse",
+      "name": "Cron",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        260,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "command": "powershell -ExecutionPolicy Bypass -NoProfile -File \"C:\\agents\\agent-team-template\\scripts\\run-skill.ps1\" -Skill funnel-daily-pulse -Project acme -DiscordWebhookVar DISCORD_WEBHOOK_NUMA"
+      },
+      "id": "exec-numa-daily-pulse",
+      "name": "Run funnel-daily-pulse (→ Discord)",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        500,
+        300
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "log-numa-daily-pulse",
+      "name": "Resultado (stdout)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        740,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Cron": {
+      "main": [
+        [
+          {
+            "node": "Run funnel-daily-pulse (→ Discord)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run funnel-daily-pulse (→ Discord)": {
+      "main": [
+        [
+          {
+            "node": "Resultado (stdout)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

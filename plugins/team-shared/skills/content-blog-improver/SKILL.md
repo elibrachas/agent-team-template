@@ -1,6 +1,6 @@
 ---
 name: content-blog-improver
-description: Use when polishing a single blog draft of the project to publishable quality — improves text, adds 2-3 internal + external authority links, fills SEO fields (title, slug, excerpt, meta), assigns category and tags from canonical taxonomy, validates brand voice. Does NOT generate the image or schedule publish (those are separate steps in content-blog-publisher). Input: a postId. Respeta la audiencia objetivo y lo que el strategicFocus de project.json declara fuera de scope.
+description: Use when polishing a single existing blog post of the project to publishable quality (interactive `Leda:` requests — a draft written by hand in the CMS admin, or a correction on a scheduled/published post) — improves text, adds internal + external authority links, fills SEO fields (title, slug, excerpt, meta), assigns category and tags from canonical taxonomy, validates brand voice. Also the rulebook (Steps 4-11) that content-blog-publisher applies when it writes a post from scratch. Does NOT generate the image or schedule publish. Input: a postId. Respeta la audiencia objetivo y lo que el strategicFocus de project.json declara fuera de scope.
 hitl_level: 2
 owner: owner
 agent: leda
@@ -18,7 +18,11 @@ cost_budget_usd: 2
 
 # content-blog-improver
 
-> **HITL 2 — propose & schedule via publisher.** Pule UN draft a calidad publicable. NO genera imagen, NO publica, NO programa. Eso lo hace `content-blog-publisher` (cron) llamando a esta skill como sub-step.
+> **HITL 2.** Pule UN post existente a calidad publicable. NO genera imagen, NO publica, NO programa.
+>
+> **Dos usos:**
+> 1. **Interactivo** (`Leda: mejora / corrige el post <id>`): el flujo completo de abajo.
+> 2. **Reglas del publisher**: `content-blog-publisher` no pule drafts de un generador upstream — redacta cada nota desde el banco de ideas (`topics`). Para eso aplica los **Pasos 4 a 11** de esta skill (estructura, Lexical, voz, SEO, taxonomía, links, author, gates, encoding). Los Pasos 1-3 son solo para un post que ya existe.
 
 ## Antes de correr (dependencias)
 
@@ -38,7 +42,7 @@ cost_budget_usd: 2
 
 ## Inputs esperados
 
-- `postId` — id del draft a pulir. Lo recibe la skill como parte del pedido del agente (el cron lo itera; en modo interactivo se extrae del comentario).
+- `postId` — id del post a pulir (p. ej. `143` en un CMS con ids numéricos). El pedido interactivo lo trae en el comentario o en el link al admin del issue.
 - `issueOrigenId` (opcional) — si la skill fue invocada desde un comentario en Linear, el issue ID para comentar el resumen.
 
 ## Workflow
@@ -53,15 +57,16 @@ Output: JSON con `title`, `content` (Lexical AST), `excerpt`, `category`, `tags`
 
 **Verificar primero (guard de reproceso)** — depende de cómo se invocó la skill:
 
-- **Cron / batch** (invocada por `content-blog-publisher`, SIN `issueOrigenId`): si `_status != 'draft'` o `ledaProcessedAt` está seteado → **abortar**. No reprocesar en el loop del cron. Reporta en el output que ya fue procesado o publicado.
+- **Sin pedido explícito** (SIN `issueOrigenId`): si `_status != 'draft'` o `ledaProcessedAt` está seteado → **abortar**. Reporta que ya fue procesado o publicado.
 - **Corrección interactiva** (invocada desde un comentario `Leda:` del owner, CON `issueOrigenId` — ej. "corrige el encoding del post X"): **NO abortes** aunque el post esté `scheduled`/`published` o tenga `ledaProcessedAt`. El owner pidió explícitamente reprocesar ESTE post; reprocésalo para aplicar el fix (encoding, tono, links...). Es **seguro**: el improver solo hace PATCH de texto/meta y NO toca `_status`, `ledaPublishAt`, `ledaStatus`, `ledaProcessedAt` ni la imagen (ver Paso 11, "No tocar") — un post programado se sigue publicando a su hora, ahora con el contenido corregido, y uno ya publicado queda corregido en vivo.
+- **Post publicado con un refresh pendiente** (HARD): si el post está publicado, corre también `get-post -PostId <id> -Draft`; si esa última versión tiene `_status: "draft"`, hay un borrador sin publicar (un refresh que no pasó los gates, o una edición del owner a medio hacer). Ahí **NO hagas PATCH sin `-Draft`**: un CMS con versiones (p. ej. Payload) arma el update sobre la última versión (el borrador) y la nota publicada pasaría a borrador (404 en la URL pública). Aplica la corrección sobre el borrador (`update-post -Draft`, partiendo del contenido de `get-post -Draft`) y avísale al owner que ese borrador sigue sin publicar. `mark-needs-rework` detecta solo ese caso y marca únicamente el borrador, así que los caminos de falla de los Pasos 2, 6 y 10 no despublican la nota.
 
 ### Paso 2: filtro de audiencia (foco del proyecto)
 
 Si los `tags` o el `title` incluyen alguno de los **tags excluidos** de `blog-taxonomy.md` (contenido para una audiencia o línea de producto fuera de scope según el `strategicFocus` de project.json), marca el draft como NO elegible:
 
 ```bash
-powershell -File scripts\leda-helpers.ps1 -Action mark-needs_rework -PostId <id>
+powershell -File scripts\leda-helpers.ps1 -Action mark-needs-rework -PostId <id>
 ```
 
 Comenta en Linear (si hay issue origen): "Skipped — el target del contenido está fuera de scope según el strategicFocus del proyecto. Conviene sacar este post del backlog de Leda."
@@ -87,7 +92,7 @@ Antes de tocar nada, lista QUÉ falta. Output mental (no escribes nada todavía)
 
 **Reglas de estructura (esto es lo que lo hace ver bien):**
 
-1. **NUNCA pongas un `h1` dentro del content.** El campo `title` YA es el h1 de la página. El content arranca en `h2`. Los drafts generados upstream suelen traer un `h1` al inicio → **bórralo** (o bájalo a `h2` solo si es una sección real). No confíes en que el frontend quite el h1 líder: suele hacerlo solo si su texto coincide EXACTO con el title; si no, queda un título duplicado visible.
+1. **NUNCA pongas un `h1` dentro del content.** El campo `title` YA es el h1 de la página. El content arranca en `h2`. Los drafts viejos de un generador upstream y los escritos a mano suelen traer un `h1` al inicio → **bórralo** (o bájalo a `h2` solo si es una sección real). No confíes en que el frontend quite el h1 líder: suele hacerlo solo si su texto coincide EXACTO con el title; si no, queda un título duplicado visible.
 2. **Jerarquía limpia**: `h2` para secciones, `h3` para subsecciones. No saltes niveles.
 3. **Párrafos cortos**: máx ~3-4 líneas. Parte los muros de texto.
 4. **Listas** para enumeraciones / pasos / checklists (mejor que párrafos con comas).
@@ -98,21 +103,22 @@ Antes de tocar nada, lista QUÉ falta. Output mental (no escribes nada todavía)
 Cómo se ven los nodos Lexical (lee los del draft real como base; esto es referencia):
 
 ```json
-{ "type": "paragraph", "format": "", "indent": 0, "version": 1, "children": [
-  { "type": "text", "text": "texto normal y ", "format": 0, "version": 1 },
-  { "type": "text", "text": "una frase clave en bold", "format": 1, "version": 1 }
+{ "type": "paragraph", "format": "", "indent": 0, "direction": "ltr", "version": 1, "children": [
+  { "type": "text", "text": "texto normal y ", "format": 0, "detail": 0, "mode": "normal", "style": "", "version": 1 },
+  { "type": "text", "text": "una frase clave en bold", "format": 1, "detail": 0, "mode": "normal", "style": "", "version": 1 }
 ] }
-{ "type": "heading", "tag": "h2", "format": "", "indent": 0, "version": 1, "children": [{ "type": "text", "text": "Título de sección", "format": 0, "version": 1 }] }
-{ "type": "list", "tag": "ul", "listType": "bullet", "start": 1, "format": "", "indent": 0, "version": 1, "children": [
-  { "type": "listitem", "value": 1, "format": "", "indent": 0, "version": 1, "children": [
-    { "type": "text", "text": "Lead-in en bold:", "format": 1, "version": 1 },
-    { "type": "text", "text": " y el resto del item normal.", "format": 0, "version": 1 }
+{ "type": "heading", "tag": "h2", "format": "", "indent": 0, "direction": "ltr", "version": 1, "children": [{ "type": "text", "text": "Título de sección", "format": 0, "detail": 0, "mode": "normal", "style": "", "version": 1 }] }
+{ "type": "list", "tag": "ul", "listType": "bullet", "start": 1, "format": "", "indent": 0, "direction": "ltr", "version": 1, "children": [
+  { "type": "listitem", "value": 1, "format": "", "indent": 0, "direction": "ltr", "version": 1, "children": [
+    { "type": "text", "text": "Lead-in en bold:", "format": 1, "detail": 0, "mode": "normal", "style": "", "version": 1 },
+    { "type": "text", "text": " y el resto del item normal.", "format": 0, "detail": 0, "mode": "normal", "style": "", "version": 1 }
   ] }
 ] }
-{ "type": "link", "fields": { "url": "/una-pagina-core", "linkType": "custom", "newTab": false }, "format": "", "indent": 0, "version": 1, "children": [{ "type": "text", "text": "texto del ancla", "format": 0, "version": 1 }] }
+{ "type": "link", "fields": { "url": "/una-pagina-core", "linkType": "custom", "newTab": false }, "format": "", "indent": 0, "direction": "ltr", "version": 1, "children": [{ "type": "text", "text": "texto del ancla", "format": 0, "detail": 0, "mode": "normal", "style": "", "version": 1 }] }
 ```
 
 - **`format` de un text node** (bitmask Lexical): `0`=normal, `1`=bold, `2`=italic, `3`=bold+italic, `8`=underline. Para énfasis editorial usa `1`.
+- **`indent: 0` en TODO nodo elemento es OBLIGATORIO** (paragraph/heading/list/listitem/link/quote): sin él, el front renderiza pero el ADMIN de un CMS con Lexical rompe al abrir el post (`Minified Lexical error #117` = `Invalid indent value`). `format`/`direction`/`version` en elementos y `detail`/`mode`/`style` en text completan la forma que el editor serializa. `leda-helpers.ps1` rellena estos defaults en `create-post`/`update-post` como red de seguridad — escríbelos igual.
 - **Links**: formato del CMS = `fields.url` + `fields.linkType:"custom"` + `fields.newTab`. `newTab:false` para internos (`/...` del sitio del proyecto), `newTab:true` solo para externos.
 
 **Reglas de edición**:
@@ -135,7 +141,7 @@ Cómo se ven los nodos Lexical (lee los del draft real como base; esto es refere
 
 Leer `projects/<slug>/blog-taxonomy.md`. Elegir:
 
-- **1 category exacta** del set canónico. Si el post no encaja en ninguna: `mark-needs_rework` y comentar "category no canónica: <propuesta>" para que el owner decida si expandir el set.
+- **1 category exacta** del set canónico. Si el post no encaja en ninguna: `mark-needs-rework` y comentar "category no canónica: <propuesta>" para que el owner decida si expandir el set.
 - **3-5 tags exactos** del set, siguiendo las reglas de combinación que define `blog-taxonomy.md`.
 
 ### Paso 7: internal links
@@ -174,7 +180,7 @@ Si da `ok: false` → no incluir, buscar alternativa.
 
 ### Paso 9: authors
 
-Si `authors` está vacío, setea el autor por defecto: **`authors: [<DEFAULT_AUTHOR_ID>]`** — `TODO(acme): id del autor por defecto en tu CMS` (ej. el usuario "Equipo de Acme"). Si la API key no puede leer la colección de usuarios (es común que `/users` dé 403 con un secreto compartido), no intentes listarla: fija el id acá y actualízalo si cambia.
+Si `authors` está vacío, setea el autor por defecto: **`authors: [<DEFAULT_AUTHOR_ID>]`** — `TODO(acme): id del autor por defecto en tu CMS` (ej. el usuario "Equipo de Acme"). Si la API key no puede leer la colección de usuarios (es común que `/users` dé 403 con un secreto compartido), no intentes listarla: fija el id aquí y actualízalo si cambia.
 
 Si ya tiene authors, mantenlos.
 
@@ -207,7 +213,7 @@ Valida **antes** de enviar el patch:
 **Si falla cualquiera**:
 
 ```bash
-powershell -File scripts\leda-helpers.ps1 -Action mark-needs_rework -PostId <id>
+powershell -File scripts\leda-helpers.ps1 -Action mark-needs-rework -PostId <id>
 ```
 
 Comentar en Linear (si hay issue origen) qué falló específicamente. NO PATCH.
@@ -274,5 +280,4 @@ NO está publicado todavía. Si te invocaron en modo individual: hay que invocar
 
 - Sin Supabase. Write sobre el CMS (colección Posts) vía API key. No toca código del producto. WebSearch/WebFetch para fuentes externas.
 - Costo objetivo: < USD 2 / corrida (Sonnet, ~3-5 turnos de tool use).
-- Cuando la skill es llamada desde el cron `content-blog-publisher`, NO comenta en Linear (no hay issue origen aún — el publisher arma el issue después, al programar).
-- Idempotencia: setear `ledaProcessedAt` con el patch para que la próxima corrida del cron lo omita.
+- El cron `content-blog-publisher` no invoca esta skill como sub-paso (redacta desde el banco `topics`); solo carga sus reglas. Esta skill comenta en Linear solo cuando hay issue origen.

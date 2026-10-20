@@ -22,7 +22,7 @@ _Guía_: inventario corto de los componentes base (Button, Card, Input, Dialog�
 
 ## 4. Patrones del producto
 
-_Guía_: cómo se hacen las cosas acá — botón primario, input con label, card, empty state, loading state. Un snippet corto por patrón si ayuda.
+_Guía_: cómo se hacen las cosas aquí — botón primario, input con label, card, empty state, loading state. Un snippet corto por patrón si ayuda.
 
 _Ejemplo_: "El CTA inline del blog ya existe como componente (`components/marketing/<cta>.tsx`); reusarlo, nunca crear una card nueva a mano."
 

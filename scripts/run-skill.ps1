@@ -3,6 +3,20 @@
 #         ...-Skill funnel-monitor -Model claude-haiku-4-5-20251001   (override de modelo por corrida)
 #         ...-Skill funnel-monitor -Project acme                      (multi-proyecto)
 #         ...-DryRun                                                  (muestra la config resuelta, no llama a claude)
+#         ...-DiscordWebhookVar DISCORD_WEBHOOK_NUMA                  (postea el resultado a ese webhook de Discord)
+#         ...-Skill content-blog-publish-tick -NoPreCheck              (corre el agente aunque no haya posts vencidos)
+#
+# Tick de Leda: antes de llamar a claude para content-blog-publish-tick, el wrapper
+# pregunta al CMS con el mismo helper de la skill (leda-helpers.ps1 -Action
+# list-scheduled-due); si no hay posts vencidos deja constancia y sale sin llamar al modelo.
+# Ver el bloque "Pre-check del tick" más abajo.
+#
+# Discord: con -DiscordWebhookVar <NOMBRE_DE_VAR>, el destino de la corrida es
+# Discord y NO Linear: el prompt le dice al agente que no cree issue (salvo que su SKILL.md lo
+# pida para un caso puntual) y que ponga el mensaje entre <discord>…</discord>; el WRAPPER
+# postea SOLO ese bloque (las notas de trabajo del agente no llegan) al webhook que está en esa var
+# (.env.server o .env.<slug>). Los agentes no hacen HTTP: el envío es del wrapper, como el
+# mirror a queue/. Tope de Discord: 2000 caracteres (se trunca con aviso).
 #
 # Multi-proyecto: -Project (default 'acme'). El contexto sale de projects\<slug>\project.json vía scripts\project.ps1.
 #
@@ -14,6 +28,8 @@ param(
   [string]$Model,
   [string]$Project = 'acme',
   [int]$TimeoutMinutes = 0,   # 0 = usar el del agente (o 30 default). Override por cron pesado (ej. pm-weekly-digest en Opus).
+  [string]$DiscordWebhookVar, # nombre de la env var con el webhook de Discord (ver cabecera). Vacío = sin Discord.
+  [switch]$NoPreCheck,        # content-blog-publish-tick: saltea el pre-check y corre el agente igual.
   [switch]$DryRun
 )
 $ErrorActionPreference = "Stop"
@@ -94,6 +110,13 @@ New-Item -ItemType Directory -Force -Path "queue/pending-review" | Out-Null
 # Si la skill NO declara agent, fallback al hardcoded histórico (Read + supabase + linear, sin Bash).
 # Mismo patrón que run-qualy.ps1 y respond-linear.ps1 — single source of truth en agents.ps1.
 $skillAgent = $null
+# Opcionales de la skill: `mcp_variant: <nombre>` elige una variante de
+# project.json → mcpVariants para ESTA skill (pisa la del agente) y `extra_allowed_tools:
+# a,b` suma tools al allowlist del agente. Caso de uso: un content-topic-scan que necesita
+# Search Console (variante 'seo' + mcp__gsc__*), que el loadout diario de Leda no
+# levanta. Sin estas claves, nada cambia.
+$skillMcpVariant = $null
+$skillExtraTools = $null
 # Búsqueda de la SKILL.md: primero en el proyecto (projects\<slug>\skills\), fallback
 # a plugins\*\skills\ (skills compartidas entre proyectos).
 $skillFile = Get-ChildItem -Path "projects\$($projectObj.slug)\skills\$Skill\SKILL.md" -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -110,6 +133,12 @@ if ($skillFile) {
     if ($frontmatter -match '(?m)^agent:\s*(\S+)') {
       $skillAgent = $matches[1].Trim()
     }
+    if ($frontmatter -match '(?m)^mcp_variant:\s*["'']?([A-Za-z0-9_-]+)') {
+      $skillMcpVariant = $matches[1].Trim()
+    }
+    if ($frontmatter -match '(?m)^extra_allowed_tools:\s*["'']?([^"''#\r\n]+)') {
+      $skillExtraTools = $matches[1].Trim().TrimEnd(',')
+    }
   }
 }
 
@@ -124,6 +153,10 @@ if ($skillAgent) {
     Write-Warning "SKILL.md de $Skill declara agent='$skillAgent' pero no está en agents.ps1. Sigo con defaults hardcoded."
   }
 }
+
+# Los repos del producto al día antes de que el agente los lea (Sync-ProjectRepos en project.ps1).
+# No en los ticks (`*-tick`, ej. el de Leda): no leen código.
+if (-not $DryRun -and $skillAgent -and $Skill -notlike "*-tick") { Sync-ProjectRepos -Project $projectObj }
 
 # Tiering de modelo (priority: -Model param > agent.Model > ANTHROPIC_MODEL env > sonnet default).
 # Los workflows de funnel-monitor / leda-publish-tick pasan -Model haiku para abaratar.
@@ -151,6 +184,17 @@ $budget = if ($agent -and $agent.PSObject.Properties['Budget'] -and $agent.Budge
 $mcpConfig = if ($agent) { Resolve-AgentMcpConfig -Agent $agent -Project $projectObj }
              else { ".\$($projectObj.mcpConfig)" }
 
+# Overrides de la skill (frontmatter mcp_variant / extra_allowed_tools, ver arriba).
+if ($skillMcpVariant) {
+  $vprop = $null
+  if ($projectObj.PSObject.Properties['mcpVariants'] -and $projectObj.mcpVariants) {
+    $vprop = $projectObj.mcpVariants.PSObject.Properties[$skillMcpVariant]
+  }
+  if ($vprop -and $vprop.Value) { $mcpConfig = ".\$($vprop.Value)" }
+  else { Write-Warning "La skill $Skill pide la variante MCP '$skillMcpVariant' pero $($projectObj.slug) no la define — sigo con $mcpConfig." }
+}
+if ($skillExtraTools) { $allowed = "$allowed,$skillExtraTools" }
+
 # AdditionalDirs (--add-dir): para leer fuera del cwd. El registry usa el placeholder
 # {{PRODUCT_REPO_PATH}} que aquí se resuelve al repo del producto DEL proyecto.
 $addDirArgs = @()
@@ -163,12 +207,28 @@ $effortArgs = @()
 if ($agent -and $agent.Effort) { $effortArgs += @('--effort', $agent.Effort) }
 
 $skillFileHint = if ($skillFile) { " Su SKILL.md está en '$($skillFile.FullName)'." } else { "" }
-$prompt = "Estás trabajando para el proyecto $($projectObj.name). Usa la skill $Skill.$skillFileHint " +
-          "Sigue su SKILL.md al pie: carga el glossary y el data-model del proyecto (en $($projectObj.contextDir)\), " +
-          "corre las queries read-only contra Supabase, y crea el issue en Linear (team $($projectObj.linear.teamKey), " +
-          "label según convención, estado Backlog, sin asignar) según memory/CLAUDE.md." +
-          $agentFooterDirective + " " +
-          "Devuelve el brief completo en markdown como tu respuesta final (lo guarda el wrapper)."
+$prompt = if ($DiscordWebhookVar) {
+  "Estás trabajando para el proyecto $($projectObj.name). Usa la skill $Skill.$skillFileHint " +
+  "Sigue su SKILL.md al pie: carga el glossary y el data-model del proyecto (en $($projectObj.contextDir)\) y corre las queries read-only que pide. " +
+  "Fecha de esta corrida (calculada por el wrapper, úsala tal cual — no la deduzcas): $((Get-Date).ToString('dddd dd-MMM-yyyy HH:mm', [Globalization.CultureInfo]::GetCultureInfo('es-ES'))) (hora del server). " +
+  "El destino de esta corrida es DISCORD, no Linear: NO crees issue en Linear salvo que el SKILL.md lo pida explícitamente para un caso puntual. " +
+  "En tu respuesta final, pon el mensaje de Discord EXACTO entre una línea '<discord>' y una línea '</discord>' (el wrapper postea SOLO lo que está entre esas marcas; cualquier nota de trabajo va afuera y no llega a Discord). Respeta el formato y el largo que define el SKILL.md (máximo 1800 caracteres)."
+} else {
+  "Estás trabajando para el proyecto $($projectObj.name). Usa la skill $Skill.$skillFileHint " +
+  "Sigue su SKILL.md al pie: carga el glossary y el data-model del proyecto (en $($projectObj.contextDir)\), " +
+  "corre las queries read-only contra Supabase, y crea el issue en Linear (team $($projectObj.linear.teamKey), estado Backlog, sin asignar) " +
+  "ELIGIENDO EL LABEL por tipo según memory/CLAUDE.md § ""Dos destinos: decisión vs registro"": " +
+  "si lo que dejas PIDE una decisión (propuesta/alerta/hallazgo accionable) va con label agent-proposal; " +
+  "si solo deja CONSTANCIA (un [Report]/digest/tick) va con label agent-report, uno por corrida con título fijo de serie, y NO lo cierres (lo archiva el lead); " +
+  "un tick SIN novedades NO crea issue (alcanza el espejo en queue/pending-review)." +
+  $agentFooterDirective + " " +
+  "Devuelve el brief completo en markdown como tu respuesta final (lo guarda el wrapper)."
+}
+
+# Send-DiscordMessage vive en project.ps1 (lo comparte run-pico-shipped.ps1).
+$discordUrl = if ($DiscordWebhookVar) { [Environment]::GetEnvironmentVariable($DiscordWebhookVar) } else { $null }
+
+$tickPreCheck = ($Skill -eq 'content-blog-publish-tick') -and -not $NoPreCheck
 
 if ($DryRun) {
   "=== DRY RUN run-skill (no se llamó a claude) ==="
@@ -180,7 +240,54 @@ if ($DryRun) {
   "AddDirs : $(if ($addDirArgs) { $addDirArgs -join ' ' } else { '(ninguno)' })"
   "Out     : $out"
   "Team    : $($projectObj.linear.teamKey) | SUPABASE_PROJECT_REF: $env:SUPABASE_PROJECT_REF"
+  "Vercel  : $(Format-ProjectVercelPin)"
+  if ($DiscordWebhookVar) { "Discord : $DiscordWebhookVar → $(if ($discordUrl) { 'configurado (' + $discordUrl.Length + ' chars)' } else { 'VACÍO — no se va a postear' })" }
+  if ($tickPreCheck) { "PreCheck: list-scheduled-due ($($projectObj.slug)) — sin posts vencidos sale sin llamar a claude" }
   exit 0
+}
+
+# Pre-check del tick: una corrida de Sonnet sobre la suscripción no tiene sentido cuando no hay
+# nada vencido (un día sin post nuevo, o cualquier tick si alguna vez corre más seguido). El helper
+# es el mismo que usa la skill en su Paso 1. Ante cualquier duda (el helper falla, la salida no
+# es JSON, hay posts) sigue como siempre y corre el agente.
+if ($tickPreCheck) {
+  $preStart = Get-Date
+  $dueRaw = $null; $dueExit = 1
+  # Con "Stop", PS 5.1 corta el script si el helper escribe algo en stderr (lo envuelve como error).
+  $prevEap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+  try {
+    $dueRaw = & powershell -ExecutionPolicy Bypass -NoProfile -File "$PSScriptRoot\leda-helpers.ps1" -Action list-scheduled-due -Project $projectObj.slug 2>$null
+    $dueExit = $LASTEXITCODE
+  } catch { $dueRaw = $null } finally { $ErrorActionPreference = $prevEap }
+  # Un warning del helper puede salir antes del JSON: se parsea desde la primera línea que
+  # empieza con '[' (el array de ConvertTo-Json arranca así; un "ADVERTENCIA: ..." no).
+  $dueLines = @($dueRaw | ForEach-Object { [string]$_ })
+  $jsonLine = -1
+  for ($k = 0; $k -lt $dueLines.Count; $k++) { if ($dueLines[$k].TrimStart().StartsWith('[')) { $jsonLine = $k; break } }
+  # El ForEach-Object enumera el array en PS 5.1 (ConvertFrom-Json lo emite como UN objeto, y un
+  # @() directo daría Count 1 con la lista vacía) y en PS 7 (que ya lo enumera). El parseo se
+  # registra aparte: una lista vacía bien parseada y un parseo fallido no son lo mismo.
+  $due = @(); $dueParsed = $false
+  if ($dueExit -eq 0 -and $jsonLine -ge 0) {
+    try {
+      $due = @(ConvertFrom-Json -InputObject ($dueLines[$jsonLine..($dueLines.Count - 1)] -join "`n") | ForEach-Object { $_ })
+      $dueParsed = $true
+    } catch { $dueParsed = $false }
+  }
+  if ($dueParsed -and $due.Count -eq 0) {
+    # Sin posts vencidos. El espejo del día no se pisa: si una corrida anterior de hoy publicó
+    # algo, su brief queda.
+    $outAbs = Join-Path (Get-Location) $out
+    if (-not (Test-Path $outAbs)) {
+      $brief = "# Tick $Skill — $(Get-Date -Format 'yyyy-MM-dd HH:mm') ($($projectObj.slug))`n`nTick limpio: 0 posts vencidos. Lo resolvió el pre-check del wrapper (leda-helpers.ps1 -Action list-scheduled-due), sin llamar al modelo.`n"
+      [System.IO.File]::WriteAllText($outAbs, $brief, (New-Object System.Text.UTF8Encoding($false)))
+    }
+    Write-AgentAudit -Wrapper 'run-skill' -ProjectSlug $projectObj.slug -Name $Skill -Model 'precheck' -CostUsd 0 -DurationS ((Get-Date) - $preStart).TotalSeconds -IsError $false
+    "Tick limpio: 0 posts vencidos en $($projectObj.slug). Pre-check sin modelo: no se llamó a claude."
+    "Brief: $out"
+    exit 0
+  }
+  if (-not $dueParsed) { Write-Warning "Pre-check del tick sin respuesta válida del helper (exit $dueExit) — corro el agente igual." }
 }
 
 # Guard de runtime por tiempo (ver project.ps1): si claude excede el timeout del
@@ -229,6 +336,19 @@ $parsed.result
 "---"
 "Brief: $out"
 "Costo USD: $($parsed.total_cost_usd) | Duración: $([math]::Round($durationS))s"
+
+# Destino Discord (solo si la corrida salió bien y hay texto): lo postea el wrapper.
+if ($DiscordWebhookVar) {
+  if (-not $discordUrl) { Write-Warning "-DiscordWebhookVar $DiscordWebhookVar está vacía — no posteé a Discord (cárgala en .env.$($projectObj.slug))." }
+  elseif ($exit -ne 0 -or $parsed.is_error -or -not [string]$parsed.result) { Write-Warning "La corrida falló — no posteo a Discord un resultado roto." }
+  else {
+    # Solo lo que está entre <discord>…</discord>; sin marcas, el resultado entero (con aviso).
+    $raw = [string]$parsed.result
+    $m = [regex]::Match($raw, '(?s)<discord>\s*(.*?)\s*</discord>')
+    $msg = if ($m.Success) { $m.Groups[1].Value } else { Write-Warning "El resultado no trae <discord>…</discord> — posteo el resultado entero."; $raw }
+    if (Send-DiscordMessage -WebhookUrl $discordUrl -Text $msg) { "Discord: enviado ($DiscordWebhookVar, $($msg.Length) caracteres)." }
+  }
+}
 
 if ($exit -ne 0 -or $parsed.is_error) {
   Write-Error "claude -p falló para $Skill (exit $exit, is_error=$($parsed.is_error))"

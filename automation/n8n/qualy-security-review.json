@@ -1,0 +1,79 @@
+{
+  "_uso_": "Review de seguridad SEMANAL de Qualy 🧪. Martes 04:30. Corre run-skill.ps1 -Skill security-review -Project acme: la skill es DEL PROYECTO (projects/acme/skills/security-review/SKILL.md, con su baseline de lo ya aceptado) y su frontmatter `agent: qualy` le da el loadout del registry + la variante MCP qa. Mira el aislamiento entre tenants en la base (RLS, grants, funciones SECURITY DEFINER), la authz de las rutas API, la superficie sin sesión y sus headers, webhooks y archivos que llegan de afuera, secretos en el repo, accesos y dependencias vulnerables. Read-only: REPORTA, no arregla; deja un [QA-sec] (decisión) por hallazgo nuevo y un [Report] seguridad por corrida. Linear es su memoria (dedupe contra los [QA-sec] abiertos y los cerrados). NO lo actives hasta que el team de Linear del proyecto y su teamId estén en projects/acme/project.json. Importa inactivo → Execute Workflow → activa.",
+  "name": "acme · qualy-security-review (martes 04:30)",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Argentina/Buenos_Aires"
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "30 4 * * 2"
+            }
+          ]
+        }
+      },
+      "id": "trigger-qualy-security-review",
+      "name": "Cron",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        260,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "command": "powershell -ExecutionPolicy Bypass -NoProfile -File \"C:\\agents\\agent-team-template\\scripts\\run-skill.ps1\" -Skill security-review -Project acme"
+      },
+      "id": "exec-qualy-security-review",
+      "name": "Run security-review",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        500,
+        300
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "log-qualy-security-review",
+      "name": "Resultado (stdout)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        740,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Cron": {
+      "main": [
+        [
+          {
+            "node": "Run security-review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run security-review": {
+      "main": [
+        [
+          {
+            "node": "Resultado (stdout)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

@@ -90,10 +90,30 @@ const TOOLS = [
           type: "number",
           description: "Atajo: últimos N días si no pasas startDate/endDate. Default 28.",
         },
-        rowLimit: { type: "number", description: "Máx filas. Default 20, máximo 100." },
+        rowLimit: { type: "number", description: "Máx filas. Default 20, máximo 250." },
         page: {
           type: "string",
           description: "Filtro opcional: limitar a una URL exacta (útil con dimensions=['query']).",
+        },
+        pageContains: {
+          type: "string",
+          description:
+            "Filtro opcional: solo URLs que contengan este texto (ej. '/blog/' para ver solo el blog). Se combina con los otros filtros (AND).",
+        },
+        queryContains: {
+          type: "string",
+          description:
+            "Filtro opcional: solo queries que contengan este texto (ej. 'precio'). Se combina con los otros filtros (AND).",
+        },
+        pageExcludeRegex: {
+          type: "string",
+          description:
+            "Filtro opcional: excluye URLs que matcheen esta regex RE2 (ej. 'guia-top|landing-precios'). GSC ordena las filas por clicks, así que excluir las páginas que concentran el tráfico deja ver el resto.",
+        },
+        queryExcludeRegex: {
+          type: "string",
+          description:
+            "Filtro opcional: excluye queries que matcheen esta regex RE2 (ej. 'marca|competidor').",
         },
         siteUrl: {
           type: "string",
@@ -165,7 +185,7 @@ async function gscQuery(args = {}) {
     args.startDate && args.endDate
       ? { startDate: args.startDate, endDate: args.endDate }
       : defaultRange(args.days || 28);
-  const rowLimit = Math.min(args.rowLimit || 20, 100);
+  const rowLimit = Math.min(args.rowLimit || 20, 250);
   const body = {
     startDate: range.startDate,
     endDate: range.endDate,
@@ -173,22 +193,25 @@ async function gscQuery(args = {}) {
     rowLimit,
     dataState: "final",
   };
-  if (args.page) {
-    body.dimensionFilterGroups = [
-      { filters: [{ dimension: "page", operator: "equals", expression: args.page }] },
-    ];
-  }
+  const filters = [];
+  if (args.page) filters.push({ dimension: "page", operator: "equals", expression: args.page });
+  if (args.pageContains) filters.push({ dimension: "page", operator: "contains", expression: args.pageContains });
+  if (args.queryContains) filters.push({ dimension: "query", operator: "contains", expression: args.queryContains });
+  if (args.pageExcludeRegex) filters.push({ dimension: "page", operator: "excludingRegex", expression: args.pageExcludeRegex });
+  if (args.queryExcludeRegex) filters.push({ dimension: "query", operator: "excludingRegex", expression: args.queryExcludeRegex });
+  if (filters.length) body.dimensionFilterGroups = [{ groupType: "and", filters }];
   const url = `${SC_V3}/sites/${encodeURIComponent(site)}/searchAnalytics/query`;
   const data = await gscFetch(url, { method: "POST", body });
-  return formatQuery(data, { site, dimensions, range, rowLimit, page: args.page });
+  const filterLabel = filters.map((f) => `${f.dimension} ${f.operator} ${f.expression}`).join(" AND ");
+  return formatQuery(data, { site, dimensions, range, rowLimit, filterLabel });
 }
 
-function formatQuery(data, { site, dimensions, range, rowLimit, page }) {
+function formatQuery(data, { site, dimensions, range, rowLimit, filterLabel }) {
   const rows = data.rows || [];
   const head = [
     `Propiedad: ${site}`,
     `Período: ${range.startDate} → ${range.endDate}  (GSC lag ~2-3d)`,
-    `Dimensiones: ${dimensions.join(" + ")}${page ? `   | filtrado a page=${page}` : ""}`,
+    `Dimensiones: ${dimensions.join(" + ")}${filterLabel ? `   | filtro: ${filterLabel}` : ""}`,
     `Filas: ${rows.length} (rowLimit ${rowLimit})`,
     "",
   ];

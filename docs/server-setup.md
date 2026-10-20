@@ -66,8 +66,14 @@ Los wrappers corren contra el **login OAuth** de la CLI (suscripción de Claude)
 | GA4 / Search Console | Service account de Google Cloud con acceso de lectura a la propiedad | `GA4_PROPERTY_ID`, `GA4_SERVICE_ACCOUNT_JSON_PATH`, `GSC_SITE_URL` (`.env.<slug>`) |
 | Stripe (opcional) | Restricted key de **solo lectura** | `STRIPE_RESTRICTED_KEY` (`.env.<slug>`) |
 | CMS + imágenes (Leda, opcional) | API key de tu CMS + key de Gemini | `PAYLOAD_BASE_URL`, `PAYLOAD_API_KEY`, `GEMINI_API_KEY` (`.env.<slug>`) |
+| Token de Vercel (deploys + logs, MCP read-only, opcional) | Vercel → Account Settings → Tokens. Va UNA vez en `.env.server`, no en cada `.env.<slug>`. Ver [`vercel-readonly-source.md`](vercel-readonly-source.md) | `VERCEL_API_TOKEN` (`.env.server`) |
+| Base MySQL del producto (opcional) | Usuario de solo lectura con GRANT por columna + túnel SSH. Ver [`mysql-readonly-source.md`](mysql-readonly-source.md) | `MYSQL_*` (`.env.<slug>`) |
+| Google Ads (opcional) | Sin key nueva: reusa la service account de GA4. Ver § 6d | — |
+| Webhook de Discord (pulso diario, opcional) | Discord → canal → Editar → Integraciones → Webhooks → Nuevo → Copiar URL | p. ej. `DISCORD_WEBHOOK_NUMA` (`.env.<slug>`) |
 
 **Solo lectura en Supabase:** el PAT en sí NO es de solo lectura (es un token de cuenta). La solo lectura la fuerza el MCP con `--read-only --project-ref` (ya configurado en el `.mcp.json`).
+
+**Solo lectura en Vercel:** tampoco existe a nivel token (Vercel solo acota por team o proyecto y por vencimiento; el mismo token puede borrar proyectos y leer las env vars de producción). La fuerza el MCP propio `scripts/mcp-vercel/`: solo GET, pin de proyectos por `project.json → vercel` y salida redactada. Requiere `cd scripts\mcp-vercel; npm ci` una vez. Los agentes nunca usan el token por `curl` ni por el CLI `vercel`.
 
 La lista completa con comentarios está en `.env.example` (core) y `.env.acme.example` (proyecto).
 
@@ -91,11 +97,16 @@ git check-ignore .env.server .env.acme     # debe devolver ambos nombres
 
 > **Gotcha:** si guardas los valores entre comillas (`KEY="valor"`), el loader de los wrappers las quita antes de exportar. Sin eso, un token viajaría con comillas y la API devolvería 401.
 
+> **Gotcha de la carga en capas:** `.env.<slug>` se carga ENCIMA de `.env.server`, así que una variable con valor en el del proyecto pisa la del core. Dos casos que muerden: un `VERCEL_API_TOKEN=<valor viejo>` que quedó en un `.env.<slug>` (bórralo: el token vive en `.env.server`) y un `GA4_SERVICE_ACCOUNT_JSON_PATH` relativo que no existe en el server (usa la ruta absoluta del core: un path roto pisa el correcto y tumba los MCP de GA4, GSC y Google Ads).
+
+> **¿Y 1Password?** En tu máquina puedes no tener ningún `.env` plano: con `scripts/op-env.mjs` los secretos viven en 1Password y se descifran a memoria (ver [`secretos.md`](secretos.md)). El server sigue usando `.env.server` + `.env.<slug>`, porque los wrappers los cargan directo.
+
 ## 6. MCPs (configurados en el repo)
 
 `plugins\team-growth\.mcp.json` (referenciado desde `project.json → mcpConfig`) trae:
 - `supabase` — solo lectura, acotado al proyecto. **Lee.**
 - `linear` — remoto (`https://mcp.linear.app/mcp`), Bearer con `${LINEAR_API_KEY}`. **Escribe issues y comentarios.**
+- `ga4`, `cwv`, `stripe`, `vercel` y `google-ads` — solo lectura. Los que necesitan instalación aparte tienen su sección o su doc: GA4 (`analytics-mcp`) y Google Ads por una herramienta de Python aislada (§ 6d), Vercel por `npm ci` ([`vercel-readonly-source.md`](vercel-readonly-source.md)). Si la base del producto es MySQL, el `.mcp.json` del proyecto suma `mysql` ([`mysql-readonly-source.md`](mysql-readonly-source.md)).
 
 Hay variantes por uso (`qa.mcp.json` con Playwright para Qualy, `design.mcp.json` para Daly, `seo.mcp.json` y `aeo.mcp.json` para Greta), referenciadas desde `project.json → mcpVariants`. Los `${VAR}` se resuelven del **env del proceso**: el wrapper carga los `.env` antes de llamar a `claude`.
 
@@ -160,10 +171,21 @@ powershell -ExecutionPolicy Bypass -NoProfile -File scripts\run-alfred.ps1 -Proj
 powershell -ExecutionPolicy Bypass -NoProfile -File scripts\run-alfred.ps1 -Project acme -Job sweep           # corrida real
 ```
 
-**Cerrar el loop en el server.** Un PR de Alfred mergeado no llega a la copia viva hasta que la actualizas. `scripts/sync-agents-repo.ps1` hace `git pull --ff-only`, pero **solo si el working tree está limpio** (nunca pisa tu WIP) y solo si es fast-forward:
+**Cerrar el loop en el server.** Un PR de Alfred mergeado no llega a la copia viva hasta que la actualizas. `scripts/sync-agents-repo.ps1` deja la copia viva en `main` y hace `git merge --ff-only` **aun con WIP sin commitear** (la copia viva casi nunca está limpia: los agentes reescriben memorias y roadmaps versionados en cada corrida, y exigir el árbol limpio dejaba la copia viva atrás durante semanas). Si un archivo con cambios locales choca con un commit entrante, descarta SOLO ese archivo (tras un backup con fecha en `queue/sync-backups/`) y reintenta; el resto del WIP no se toca y nunca usa stash, reset ni force. Si aun así no puede hacer fast-forward, deja UN `[Alert]` en Linear con el motivo y los archivos (uno solo mientras siga abierto), en el team del proyecto "home de ops" (`-OpsProject <slug>`, default `acme`). Si la copia viva está en otra rama que ya se mergeó, vuelve a `main`; si esa rama tiene trabajo sin mergear, no cambia de rama y avisa.
 - **A mano**, después de mergear: `powershell -File scripts\sync-agents-repo.ps1`.
 - **Piggyback en Alfred**: el sweep diario lo llama al inicio (depende de que ese cron esté activo).
 - **Cron dedicado (recomendado)**: `automation/n8n/sync-agents-repo.json` lo corre cada pocas horas, sin llamar a `claude` (costo cero). Se importa inactivo; actívalo.
+
+### 6d. MCP de Google Ads (solo lectura, para Numa y Greta)
+
+Gasto, clics y conversiones por campaña y por día, para calcular CAC y ROAS. Es el MCP **oficial** de Google (`google-ads-mcp`, versión fijada) y va en el `.mcp.json` default del proyecto (bloque `google-ads`). Detalle completo, errores y cómo leer los datos: [`google-ads-readonly-source.md`](google-ads-readonly-source.md).
+
+**Sin key nueva.** Reusa la **misma service account de GA4** (`GA4_SERVICE_ACCOUNT_JSON_PATH`) y no lleva developer token: Google los dio de baja y el acceso ahora lo da el proyecto de Google Cloud. Google Ads no tiene scope de solo lectura, así que el solo-lectura lo ponen las tools del MCP (solo leen) **y** el rol «Solo lectura» de la service account en la cuenta de Google Ads.
+
+1. Del lado de Google, una vez: habilita la Google Ads API en el proyecto de Google Cloud de la service account, pide el nivel de acceso **Explorer** en *Google Ads API → Overview* y agrega la service account en Google Ads → Administrador → Acceso y seguridad con rol **«Solo lectura»**.
+2. En el server, con el usuario que corre los agentes, instálalo como herramienta de Python aislada. Si el server no tiene Python, usa **`uv`** (trae su propio Python): `winget install --id astral-sh.uv -e`, abre otra consola y `uv tool install "google-ads-mcp==<versión>" --python 3.13`. Con Python, sirve igual `python -m pipx install "google-ads-mcp==<versión>"`. Los dos dejan el `.exe` en `%USERPROFILE%\.local\bin` (lo confirma `uv tool dir --bin`). El `.mcp.json` lo llama como `google-ads-mcp`, así que esa carpeta tiene que estar en el PATH del proceso de los agentes (los wrappers la suman desde `CLAUDE_USERPROFILE`); si no, pon la ruta absoluta en el `command` del bloque. Hazlo **antes** de que el `.mcp.json` con el bloque llegue a la copia viva: si no, cada corrida anota un MCP que no levanta.
+3. `.env.server`: nada nuevo. Si hay una línea `GOOGLE_ADS_DEVELOPER_TOKEN=...`, bórrala.
+4. Smoke directo (comando en el doc) y después un `Numa: ¿cuánto gastamos ayer en Google Ads?` en un issue del team.
 
 ## 7. El wrapper de corrida (PowerShell)
 
@@ -183,7 +205,9 @@ Lo que conviene entender del wrapper:
 - **Guard por tiempo**: cada agente declara `TimeoutMinutes` en `scripts/agents.ps1`; un watchdog mata el árbol de procesos al vencer (`AGENT_TIMEOUT_MINUTES` lo pisa globalmente). `--max-budget-usd` (`PER_RUN_BUDGET_USD`) queda como respaldo.
 - **Audit**: cada corrida agrega una línea a `audit/YYYY-MM-DD.jsonl` (modelo, costo nominal, duración, `timed_out`, `is_error`).
 
-**Permisos:** estas skills **leen** la base y **crean un issue en Linear** (vía MCP). El allowlist es `Read,mcp__supabase__*,mcp__linear__*` y nada más.
+**Permisos:** estas skills **leen** la base y **crean un issue en Linear** (vía MCP). El allowlist es `Read,mcp__supabase__*,mcp__linear__*` y nada más. Si la skill declara `agent:` en el frontmatter, la allowlist y el modelo salen del registry del agente; una skill puede sumar tools con `extra_allowed_tools` y elegir otra variante de MCP con `mcp_variant` sin tocar el registry.
+
+**Destino Discord:** con `-DiscordWebhookVar <VAR>` (el NOMBRE de una env var de `.env.<slug>`, nunca el webhook) la corrida termina en un mensaje de Discord: el agente deja el texto entre una línea `<discord>` y una línea `</discord>` y el wrapper postea solo ese bloque (con `allowed_mentions` vacío: un `@everyone` del agente no notifica a nadie). Lo usa `funnel-daily-pulse` de Numa.
 
 > **Por qué el agente NO tiene `Write`:** en Windows, las reglas `Write(<glob>)` no matchean la ruta absoluta que usa la tool, y un `Write` pelado dejaría al agente tocar cualquier archivo del repo. Solución: el agente **devuelve el brief como respuesta final** y el wrapper lo escribe en `queue/pending-review/`.
 
@@ -204,7 +228,7 @@ Los workflows están versionados en **`automation/n8n/`**: impórtalos, no los a
 
 - `linear-feedback-listener.json` — webhook de Linear → `respond-linear.ps1`. Es lo que hace funcionar los `Nombre:`. Necesita una credencial de Linear en n8n y un trigger por team.
 - `_template-skill-cron.json` — base para automatizar cualquier skill (reemplaza `__PROJECT__` / `__SKILL__` / `__CRON__`).
-- Crons de ejemplo: `signup-to-paid-tracker`, `funnel-monitor`, `greta-seo-weekly`, `greta-aeo-weekly`, `qualy-prod-smoke`, `qualy-log-review`, `leda-blog-publisher`, `leda-publish-tick`, `alfred-daily-sweep`, `sync-agents-repo`, `core-health-check`, `core-auth-probe`.
+- Crons de ejemplo: `signup-to-paid-tracker`, `funnel-monitor`, el pulso diario de Numa a Discord (`funnel-daily-pulse`), `greta-seo-weekly`, `greta-aeo-weekly`, `qualy-prod-smoke`, `qualy-log-review`, la revisión de seguridad de Qualy (`security-review`), el scan de temas de Leda (`content-topic-scan`), `leda-blog-publisher`, `leda-publish-tick`, `alfred-daily-sweep`, `sync-agents-repo`, `sync-product-repos`, `core-health-check`, `core-auth-probe`.
 
 Cada cron es `Schedule Trigger → Execute Command (wrapper) → NoOp`. Impórtalos **inactivos**, pruébalos con **Execute Workflow** y recién después actívalos. Configura la zona horaria del workflow a la tuya.
 
@@ -212,9 +236,32 @@ Para los crons, n8n **no** necesita un nodo de Linear: el agente escribe el issu
 
 > **Nunca re-importes a ciegas** el JSON del repo encima de un workflow ya publicado: la versión viva puede haber cambiado en la UI. Exporta la versión viva o aplica el diff mínimo.
 
+### 9a. El tick de Leda: una vez por día
+
+El publisher de Leda escribe la nota de madrugada y la deja agendada unas horas después. Lo único que publica es el tick `content-blog-publish-tick`, y alcanza con correrlo **una vez por día, a primera hora**: cada nota sale con el primer tick posterior a su hora de agenda, y **la ventana para frenarla con `Leda: stop ACM-X` es hasta ese tick**. Si el tick corre antes de que venza la nota del día, sale a la mañana siguiente (casi un día entero de ventana); si corre después, sale ese mismo día. Elige la hora del tick según cuánta ventana quieres.
+
+Los días sin post vencido el tick no llama a `claude`: `run-skill.ps1` resuelve la lista vacía y deja una línea `"model":"precheck"` en `audit\<fecha>.jsonl`. No le pongas `-Model` con Haiku al comando del tick: con Haiku el agente alucinaba que no podía ejecutar PowerShell y no publicaba.
+
+El health check diario (`scripts/run-health-check.ps1`) compara cada proyecto contra la hora de su último tick (la de hoy si ya pasó, si no la de ayer; las horas están en `$TickProjects`). Avisa en dos casos:
+
+- **Falta el brief de ese tick** en `queue\pending-review\`: el tick no corrió (o falló antes de escribir el brief). Mira las **Executions** del workflow en n8n.
+- **Un post que vencía antes de ese tick sigue programado**: el tick corrió pero no lo publicó. El motivo está en el stdout de esa ejecución.
+
+Una nota que tiene que salir antes del tick sale con **Execute Workflow** en el tick, o a mano:
+
+```powershell
+cd C:\agents\agent-team-template
+powershell -ExecutionPolicy Bypass -NoProfile -File scripts\run-skill.ps1 -Skill content-blog-publish-tick -Project acme
+```
+
+### 9b. Zona horaria de n8n
+
+Los workflows del repo traen `settings.timezone`, pero un workflow exportado desde la UI puede no tenerla, y entonces el cron dispara en la zona por defecto de n8n (America/New_York), que además cambia con el horario de verano de EE.UU. Se nota en Linear: los `[Report]` y los `[Alert]` llegan a otra hora que la que dice el cron. Para que cada cron corra a la hora que dice, agrega `GENERIC_TIMEZONE=<tu zona>` al entorno del servicio de n8n y reinícialo, o elige la zona en *Workflow → Settings → Timezone* de cada workflow. Después del cambio, revisa la hora del tick de Leda en el mismo cambio: un cron que dependía de la zona por defecto se corre.
+
 ## 10. Salud del sistema y recuperación
 
-- `scripts\run-health-check.ps1` detecta fallas silenciosas: un probe real de auth (`claude -p "OK"` — `claude --version` no ve un logout de OAuth), clusters de errores en el audit, archivos `.env` faltantes, `teamId` incompletos, crons que no dejaron su brief a tiempo y timeouts. Si encuentra problemas crea un `[Alert]` en Linear y sale con código 1 (n8n en rojo). Crons: `core-health-check` (completo) y `core-auth-probe` (`-AuthOnly`, liviano).
+- `scripts\run-health-check.ps1` detecta fallas silenciosas: un probe real de auth (`claude -p "OK"` — `claude --version` no ve un logout de OAuth), clusters de errores en el audit, archivos `.env` faltantes, `teamId` incompletos, crons que no dejaron su brief a tiempo, timeouts y el tick de Leda (que no corrió, o que dejó un post vencido sin publicar; § 9a). Si encuentra problemas crea un `[Alert]` en Linear y sale con código 1 (n8n en rojo). Crons: `core-health-check` (completo) y `core-auth-probe` (`-AuthOnly`, liviano).
+- `scripts\sync-product-repos.ps1 -Project <slug>` pone al día las copias locales de los repos del producto (`fetch` siempre; fast-forward solo en la rama por defecto y sin cambios trackeados; nunca fuerza nada). Los wrappers lo corren antes de leer código y un cron diario cubre los días sin corridas: una copia atrasada hace que los agentes analicen código que ya no existe.
 - `scripts\recover-failed-runs.ps1` lista (y con `-Execute` re-corre) las corridas con `is_error` del audit, por ejemplo después de un logout de OAuth que tiró a todo el roster. Un webhook de Linear ya consumido no se reintenta solo; esto te deja recuperarlo.
 
 ## 11. Roles en el listener
@@ -225,9 +272,9 @@ Cada agente tiene un `OperatingMode` en `scripts/agents.ps1` que define su loado
 - **Capi** — `lead-triage-and-create`. Lee, rutea, comenta y **puede crear issues** (`[Proposal]`, Backlog, sin asignar). No escribe archivos ni cambia estado/prioridad/asignación de issues existentes.
 - **Pico** — `creates-issues`. Además de comentar, crea issues `[Proposal]` con citas concretas del repo del producto. Si la propuesta toca UI, carga el design system o sugiere un mockup de Daly.
 - **Cody** — `writes-code`. Lee y **escribe código en el repo del producto** (`productRepoPath`), crea ramas `cody/*` y abre PRs. Si existe un brief de Daly en `design/<proyecto>/<IssueId>-<slug>/`, lo usa como spec y al terminar lo archiva en `implemented/`. No mergea ni cambia el estado del issue. Requiere `gh auth login` (o `GH_TOKEN`) una vez.
-- **Qualy** — `qa-tests` + MCP con Playwright. QA de previews de PRs, smoke no destructivo de producción y revisión de logs. Reporta PASS/FAIL; no escribe código.
+- **Qualy** — `qa-tests` + MCP con Playwright. QA de previews de PRs, smoke no destructivo de producción, revisión de logs (Supabase + Vercel por el MCP read-only `mcp__vercel__*`) y revisión semanal de seguridad (`security-review`). Reporta PASS/FAIL; no escribe código.
 - **Daly** — `design-creates-mockups` + MCP con Playwright. Comenta y **escribe mockups** (HTML/CSS autocontenido) + `brief.md` en `design/`. Nunca escribe en el repo del producto.
-- **Leda** — `content-publishes` + `scripts/leda-helpers.ps1` (API del CMS + generación de imágenes). Cron diario que mejora drafts del blog, genera la imagen, agenda la publicación con ventana de cancelación y crea un issue `[Content]`; un tick periódico publica lo que venció. Nunca escribe en el repo del producto.
+- **Leda** — `content-publishes` + `scripts/leda-helpers.ps1` (API del CMS + generación de imágenes) + `scripts/seed-topics.ps1` (banco de ideas). Scan semanal que carga ideas al banco `topics`, cron diario que escribe una nota desde ese banco (o el refresh de una publicada), genera la imagen, la agenda con ventana de cancelación y crea un issue `[Content]`; un tick diario publica lo que venció (§ 9a). Nunca escribe en el repo del producto.
 - **Alfred** — wrapper dedicado (ver 6c).
 
 ## 12. Checklist
@@ -243,6 +290,12 @@ Cada agente tiene un `OperatingMode` en `scripts/agents.ps1` que define su loado
 - [ ] Listener importado + credencial de Linear + prueba con `Capi: hola`
 - [ ] Crons importados + probados con Execute Workflow + activados de a uno
 - [ ] (Greta SEO) `npm install` en `scripts\mcp-gsc` y `scripts\mcp-cwv` + Search Console API + SA con acceso + `GSC_SITE_URL`
+- [ ] (Vercel, opcional) `npm ci` en `scripts\mcp-vercel` + `VERCEL_API_TOKEN` en `.env.server` (y ningún `VERCEL_API_TOKEN` viejo en los `.env.<slug>`) + `scripts\run-qualy.ps1 -Job log-review -Project <slug> -DryRun` muestra la línea `Vercel :` con el pin y `token cargado`
+- [ ] (MySQL, opcional) usuario con GRANT por columna + túnel SSH + `MYSQL_*` en `.env.<slug>` + `npm ci; npm test` en `scripts\mcp-mysql`
+- [ ] (Google Ads, opcional, § 6d) API habilitada + nivel Explorer + service account con rol «Solo lectura» en la cuenta + `google-ads-mcp` instalado con `uv tool` o `pipx` + smoke OK + `Numa:` contesta el gasto de ayer
+- [ ] (Discord, opcional) webhook del canal en `.env.<slug>` + `run-skill.ps1 -Skill funnel-daily-pulse -Project <slug> -DiscordWebhookVar <VAR> -DryRun` muestra `Discord : <VAR> → configurado`
+- [ ] (Leda) tick diario a la hora que quieras (§ 9a) + su hora en `$TickProjects` del health check
+- [ ] (opcional, § 9b) zona horaria de n8n configurada (`GENERIC_TIMEZONE`) y la hora del tick de Leda revisada en el mismo cambio
 - [ ] (Alfred) label `alfred` + clon en `ALFRED_REPO_PATH` + `Alfred` en la regex del listener + `-DryRun` dice modo PR
 - [ ] (Cody) `gh auth login` → `gh repo view your-org/acme-app` responde OK
 - [ ] Health-check activo (`core-health-check` + `core-auth-probe`)

@@ -9,13 +9,13 @@
 | Agente | Emoji | Rol | Dónde vive | HITL |
 |---|---|---|---|---|
 | **Capi** | 🫒 | Project Lead / PM. Routea los pedidos del owner al agente correcto. Lee, propone, sintetiza; **puede crear issues en Linear** (convención canónica: `[Proposal]`/`agent-proposal`, Backlog, sin asignar). Dueño del plan persistente `projects/<slug>/roadmap.md` vía el cron `pm-progress-review`. No genera análisis propio. | listener (`respond-linear.ps1`) + `scripts/run-capi-roadmap.ps1` | 1 |
-| **Numa** | 📊 | Data analyst. Base de datos read-only, queries de cohortes / ARPU / funnel / anomalías. Crons `signup-to-paid-tracker` y `funnel-monitor`. | listener + `scripts/run-skill.ps1` | 1 |
+| **Numa** | 📊 | Data analyst. Base de datos read-only, queries de cohortes / ARPU / funnel / anomalías, CAC y ROAS con el gasto de Google Ads. Crons `signup-to-paid-tracker`, `funnel-monitor` y `funnel-daily-pulse` (un mensaje diario a Discord con `run-skill.ps1 -DiscordWebhookVar`; no crea issue). | listener + `scripts/run-skill.ps1` | 1 |
 | **Greta** | 📈 | Growth. Ads, SEO/AEO, email lifecycle, conversión. Crons `seo-weekly-review` y `aeo-weekly-review` con memoria persistente (loadout pesado desacoplado del listener, vía `run-greta-seo.ps1` / `run-greta-aeo.ps1`). | listener + wrappers dedicados | 1-2 |
 | **Pico** | 🎯 | Product. Insights → propuestas accionables: crea issues `[Proposal]` en Linear. Lee el repo del producto, la base, GA4, CrUX. Crons `product-idea-scan` y `product-shipped-digest`. | listener (`OperatingMode='creates-issues'`) + `scripts/run-pico-shipped.ps1` | 2 |
 | **Cody** | 💻 | Code. Lee el repo del producto, sincroniza main, crea branch `cody/*`, edita, corre el gating local (declarado en su override), commitea, pushea y abre PR con `gh pr create`. **Nunca mergea.** Sigue `AGENTS.md` + `CLAUDE.md` del producto. Scan semanal read-only `tech-debt-scan`. | listener (`OperatingMode='writes-code'`) + `scripts/run-cody-scan.ps1` | 2 |
-| **Qualy** | 🧪 | QA tester. Corre la suite del producto + testeo exploratorio con browser real (Playwright). Frentes: QA de previews de PRs de Cody, **review semanal de front** (flujos + calidad + seguridad de front, no destructivo, con memoria `qualy-front-memory.md`), revisión de logs. Reporta PASS/FAIL — no escribe código ni mergea. | listener (`OperatingMode='qa-tests'`) + MCP propio (`qa.mcp.json`) + `scripts/run-qualy.ps1` | 1-2 |
+| **Qualy** | 🧪 | QA tester. Corre la suite del producto + testeo exploratorio con browser real (Playwright). Frentes: QA de previews de PRs de Cody, **review semanal de front** (flujos + calidad + seguridad de front, no destructivo, con memoria `qualy-front-memory.md`), revisión de logs (base + Vercel por `mcp__vercel__*`) y **revisión semanal de seguridad** (`security-review`: aislamiento de datos, authz de rutas, secretos, accesos, dependencias; nunca se loguea ni muta nada). Cruza una vulnerabilidad de una dependencia compartida contra los otros proyectos en la misma corrida. Reporta PASS/FAIL — no escribe código ni mergea. | listener (`OperatingMode='qa-tests'`) + MCP propio (`qa.mcp.json`) + `scripts/run-qualy.ps1` | 1-2 |
 | **Daly** | 🎨 | UX/UI designer. Comenta en Linear y **escribe mockups reales** (HTML/CSS autocontenido con los tokens del design system) + `brief.md` (spec para Cody) en `design/<slug>/<issue>/`. Browser real con Playwright. Nunca escribe en el repo del producto, solo lo lee. | listener (`OperatingMode='design-creates-mockups'`) + MCP propio (`design.mcp.json`) | 1-2 |
-| **Leda** | 📖 | Content expert / blog publisher. **Cron diario** que pule drafts del blog en el CMS + genera la imagen destacada (familia visual random con anti-repetición) + programa la publicación a +6 h. **Tick horario** que publica salvo cancelación. Path interactivo en Linear. Nunca escribe código del producto — solo edita posts vía la API del CMS. | listener (`OperatingMode='content-publishes'`) + `scripts/leda-helpers.ps1` | 2 |
+| **Leda** | 📖 | Content expert / blog publisher. **Scan semanal** (`content-topic-scan`) que carga ideas con evidencia de demanda al banco `topics` del CMS. **Cron diario** que toma una idea y escribe la nota desde cero (o el `refresh:` de una publicada) + genera la imagen destacada (familia visual random con anti-repetición) + programa la publicación. **Tick diario** que publica salvo cancelación. Path interactivo en Linear. Nunca escribe código del producto — solo edita posts y topics vía la API del CMS. | listener (`OperatingMode='content-publishes'`) + `scripts/leda-helpers.ps1` + `scripts/seed-topics.ps1` | 2 (3 en la carga del banco) |
 | **Alfred** | 🎩 | Meta-agente que mejora a los OTROS agentes. Cuando el owner marca fuerte que un agente actuó mal (o lo llaman directo), diagnostica la causa raíz y, si amerita, cambia el **sistema de agentes** (system prompt, override, `SKILL.md`, wrapper o doc), abre **PR contra el repo de agentes** y reporta en Linear. Único agente que edita/commitea el repo de agentes. Nunca toca el repo del producto. No mergea. | `scripts/run-alfred.ps1` (cron diario de barrido) + listener | 1 |
 | **Lupa** | 🔍 | Research subagent. Cualquier agente la invoca vía la tool `Agent` con `subagent_type: Explore` para buscar en código/docs/web. No conversa directo con el owner. | Convención de uso, no skill | 1 (read-only) |
 
@@ -33,7 +33,8 @@ Qualy: testea el preview del PR de ACM-23 y dime si rompe algo
 Daly: mockupea el empty state del dashboard cuando el usuario no tiene datos
 Leda: stop ACM-42                  # cancelar una publicación programada
 Leda: mejora el post <id>          # pulido ad hoc, sin programar
-Leda: ¿qué hay en el backlog?      # estado del backlog de drafts
+Leda: ¿qué hay en el banco?        # ideas pendientes y lo que está en curso
+Leda: carga esta idea: <tema>      # una idea puntual al banco (mismo filtro que el scan)
 Alfred: Numa alarma por variaciones chicas aunque le dije que no — revisa su prompt
 ```
 
@@ -84,18 +85,18 @@ Ningún agente dispara a otro directo: el owner es el eslabón entre cada paso.
 
 ## Flujo de contenido (Leda → publica, o el owner cancela)
 
-1. **Generador upstream** (p. ej. un workflow de n8n) deja un draft en el CMS.
-2. **Cron diario de Leda** lista los drafts elegibles (filtrando los tags excluidos de `projects/<slug>/blog-taxonomy.md`) y procesa ≥2:
-   - Pule el texto según la voz del proyecto (sin promesas vacías ni superlativos).
+1. **Banco de ideas** (reemplaza a un generador upstream que dejaba drafts sin mirar lo publicado y terminaba con notas que compiten por la misma búsqueda): el scan semanal `content-topic-scan` busca ideas con evidencia de demanda (Search Console, la memoria SEO/AEO de Greta, la temporada), las deduplica contra lo publicado, lo que está en curso y el banco, y **las carga sola** en la collection `topics` del CMS con `scripts/seed-topics.ps1` (nivel 3: la vuelta atrás es borrar la idea antes de que el publisher la tome). El issue `[Topics]` es el registro de lo cargado y solo pide algo si hay una pregunta para el owner.
+2. **Cron diario de Leda** toma 1 topic y escribe la nota desde cero (si es un `refresh:`, reescribe esa nota publicada y la publica en la misma corrida si pasa los gates):
+   - Redacta con el estándar de la nota: respuesta directa arriba, H2 como preguntas reales, checklist, dato con fuente y fecha, FAQ, en la voz del proyecto (sin promesas vacías ni superlativos).
    - Completa SEO: title, slug, excerpt, meta.
-   - Asigna category + 3-5 tags del set canónico (`blog-taxonomy.md`).
-   - Inserta 2-3 links internos + 2-3 externos de autoridad (`content-references.md`).
+   - Asigna category + 3-5 tags del set canónico (`projects/<slug>/blog-taxonomy.md`).
+   - Inserta ≥3 links internos (2 notas hermanas + la página del CTA) + 2-3 externos de autoridad (`content-references.md`).
    - Elige familia visual random con anti-repetición (`image-style-families.md`), deriva la escena del título + takeaways, genera la imagen y la sube al CMS.
-   - Programa la publicación a +6 h y crea un issue `[Content]` en Linear con preview, deadline e instrucciones para frenarla.
-3. **El owner revisa** dentro de la ventana: si va, no hace nada; si quiere cancelar, comenta `Leda: stop ACM-X`; si quiere un retoque chico, edita en el admin del CMS.
-4. **Tick horario de Leda**: para cada post vencido, lee el thread del issue; si hay señal de cancelación, cancela y comenta; si no, publica, comenta el link público y mueve el issue a Done.
+   - Programa la publicación y crea un issue `[Content]` en Linear con preview, día de salida e instrucciones para frenarla.
+3. **El owner revisa** hasta el tick siguiente: si va, no hace nada; si quiere cancelar, comenta `Leda: stop ACM-X` antes de ese tick; si quiere un retoque chico, edita en el admin del CMS.
+4. **Tick diario de Leda** (una vez por día, a primera hora): para cada post vencido, lee el thread del issue; si hay señal de cancelación, cancela y comenta; si no, publica, comenta el link público y mueve el issue a Done. Los días sin posts vencidos, el wrapper sale sin llamar al modelo.
 
-Quality gates obligatorios antes de programar: ≥800 palabras, ≥2 links internos + ≥2 externos validados, todos los campos SEO, imagen, autor, ≥3 tags, brand voice OK. Si falla, el post queda `needs_rework` y se reporta en el brief.
+Quality gates obligatorios antes de programar: ≥800 palabras, ≥3 links internos (2 notas hermanas) + ≥2 externos validados, todos los campos SEO, FAQ 3-5, imagen, autor, ≥3 tags, brand voice OK. Si falla, el post queda `needs_rework` y se reporta en el brief.
 
 ## Loop de mejora de agentes (escalación → Alfred 🎩)
 
@@ -113,8 +114,13 @@ Alfred toca SOLO el repo de agentes; si la causa está en el producto, lo dice y
 2. **Este archivo** — actualiza la tabla y las secciones que lo nombren.
 3. **`automation/n8n/linear-feedback-listener.json`** — actualiza la regex del IF y la del Execute Command (`^(Capi|Numa|Greta|Pico|Cody|Qualy|Daly|Leda|Alfred):`). **Ojo**: no re-importes el JSON de cero — exporta la versión viva de n8n, aplica el diff sobre esa y re-impórtala.
 4. **`project.json → agents`** de cada proyecto — habilita o deshabilita el agente.
+5. **`lead/scripts/model.mjs`** — si el agente crea issues con un prefijo `[…]` nuevo, súmalo a la clasificación del Project Lead (trabajo / registro / flujo) y al mapa prefijo → agente; si no, el lead no sabe de quién es ni si tiene que archivarlo.
 
 Los lugares deben coincidir o el listener no va a routear bien.
+
+## Project Lead (no es un agente del roster)
+
+El **Project Lead** no tiene entrada en `scripts/agents.ps1`, no corre en el server y no firma con `🤖`: es Claude Code en la máquina del owner con la skill `.claude/skills/project-lead`. Cada mañana tría lo que dejan los agentes en todos los teams, archiva los registros leídos, junta duplicados y le lleva al owner hasta tres tareas listas para un sí; con el sí, publica el pedido al agente (`Cody: …`, `Qualy: …`, `Alfred: …`) con la API key del owner y lo sigue hasta producción. No reemplaza a Capi (que sigue siendo el PM de cada proyecto y el único dueño de `roadmap.md`). Detalle: [`lead/README.md`](../lead/README.md).
 
 ## Filosofía operativa
 

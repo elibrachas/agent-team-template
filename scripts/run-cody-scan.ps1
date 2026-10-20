@@ -67,6 +67,8 @@ if ($env:CLAUDE_USERPROFILE) {
 . "$PSScriptRoot\agents.ps1"
 . "$PSScriptRoot\project.ps1"
 $projectObj = Resolve-ProjectContext -Slug $Project
+# Los repos del producto al día antes de leerlos (Sync-ProjectRepos en project.ps1).
+if (-not $DryRun) { Sync-ProjectRepos -Project $projectObj }
 $signature = Get-AgentSignature -Name 'cody'
 
 $stamp = Get-Date -Format "yyyy-MM-dd"
@@ -98,6 +100,7 @@ Reglas duras de este turno (HARD STOPS):
 - READ-ONLY ABSOLUTO sobre el repo del producto. NO tienes tools Edit/Write. Con Bash, SOLO comandos de DIAGNÓSTICO read-only: typecheck con --noEmit, lint, git log/diff/status, grep, ls, cat. PROHIBIDO: git add/commit/push/branch/checkout/reset/rebase, gh pr create, installs (pnpm/npm install, corepack), build, y cualquier comando que modifique archivos del repo.
 - NO escribes NINGÚN archivo (tampoco $roadmapPath — de eso es dueño Capi). Tu output son los issues de Linear + el brief que devuelves.
 - Antes de proponer: LEE $roadmapPath y dedupea contra él + las [Proposal] abiertas en Linear. No re-propongas lo wont-fix ni lo ya hecho.
+- VERIFICA CONTRA EL CÓDIGO, no contra la base (memory/CLAUDE.md § "Verifica contra el código, no contra esta base"): el contexto de negocio (data-model, glossary, override) PUEDE estar viejo. Toda [Proposal] se funda en lo que LEÍSTE en el repo, no en la base: confirma el proveedor / archivo / función / ruta / tabla que nombras. El repo ya está sincronizado a main al inicio de la corrida, pero `git -C <repo> log -1` NO dice en qué rama estás: confirma con `git -C <repo> rev-parse --abbrev-ref HEAD` (que sea la rama default, p. ej. main) y `git -C <repo> rev-list --count HEAD..origin/<default>` (que dé 0 = al día) antes de afirmar un `archivo:línea`. Si quedó en otra rama o atrás, dilo en el brief y no afirmes líneas exactas.
 - Salida en Linear (team $($projectObj.linear.teamKey)): hasta 3-5 [Proposal] de deuda técnica (label agent-proposal, Backlog, sin asignar, las 6 secciones canónicas de memory/CLAUDE.md). Al final del body de CADA issue agrega una línea '---' y debajo 'Generado por $signature'.
 - Si el toolchain (pnpm/npx) no está disponible, haz el scan con análisis estático (Grep/Read) y decláralo. No inventes conteos.
 - Si el MCP de Linear falla, no crees a ciegas: deja los hallazgos en el brief y avisa.

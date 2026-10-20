@@ -1,0 +1,16 @@
+{
+  "name": "agent-team-mcp-mysql",
+  "version": "0.1.0",
+  "description": "MCP server MySQL READ-ONLY (guard de SQL + sesión read-only) — usado por Numa, Greta y Pico para la base MySQL de la app de un proyecto",
+  "private": true,
+  "type": "module",
+  "main": "index.mjs",
+  "bin": "index.mjs",
+  "scripts": {
+    "test": "node guard.test.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.18.0",
+    "mysql2": "^3.11.0"
+  }
+}

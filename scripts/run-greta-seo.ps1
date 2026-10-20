@@ -65,6 +65,8 @@ if ($env:CLAUDE_USERPROFILE) {
 # Multi-proyecto: carga .env.<slug> ENCIMA de .env.server (limpia las project-scoped antes).
 . "$PSScriptRoot\project.ps1"
 $projectObj = Resolve-ProjectContext -Slug $Project
+# Los repos del producto al día antes de leerlos (Sync-ProjectRepos en project.ps1).
+if (-not $DryRun) { Sync-ProjectRepos -Project $projectObj }
 $teamKey = $projectObj.linear.teamKey
 
 # Roster → Greta (SOLO para identidad/firma; el loadout pesado se hardcodea abajo).
@@ -80,7 +82,7 @@ New-Item -ItemType Directory -Force -Path "queue/pending-review" | Out-Null
 # --- Loadout HARDCODEADO del run de SEO (decoplado del registry de Greta) ---
 # Write: SOLO para la memoria (el HARD STOP del SKILL lo acota a un archivo). Glob/Grep:
 # para la auditoría de frontend del repo del producto. mcp__gsc__*: el server nuevo.
-$allowed = "Read,Glob,Grep,Write,mcp__supabase__*,mcp__linear__*,mcp__ga4__*,mcp__cwv__*,mcp__gsc__*"
+$allowed = "Read,Glob,Grep,Write,mcp__supabase__*,mcp__linear__*,mcp__ga4__*,mcp__cwv__*,mcp__gsc__*,mcp__mysql__*"
 
 # Skill + memoria: primero projects\<slug>\skills\ (convención de skills por proyecto),
 # fallback al plugin compartido (team-growth).
@@ -94,12 +96,13 @@ if ($projectObj.PSObject.Properties['mcpVariants'] -and $projectObj.mcpVariants.
   $mcpConfig = ".\$($projectObj.mcpVariants.seo)"
 }
 
-# Lectura del repo del producto (frontend SEO: sitemap/robots/metadata/json-ld/cwv budgets).
-$addDirArgs = @()
-$prodRepo = $projectObj.productRepoPath
-$resolved = Resolve-Path -Path $prodRepo -ErrorAction SilentlyContinue
-if ($resolved) { $addDirArgs += @('--add-dir', $resolved.Path); $prodRepo = $resolved.Path }
-else { Write-Warning "No encontré $prodRepo — la auditoría de frontend correrá degradada." }
+# Lectura de los repos del producto (frontend SEO: sitemap/robots/metadata/json-ld/cwv budgets).
+# Multi-repo: se montan TODOS los repos de project.json → productRepos
+# (en proyectos de un solo repo, == productRepoPath). Todos son SOLO LECTURA aquí.
+$addDirArgs = Get-ProjectRepoAddDirArgs -Project $projectObj -Who 'Greta'
+if (-not $addDirArgs) { Write-Warning "No encontré ningún repo del producto — la auditoría de frontend correrá degradada." }
+$prodRepo = ((Get-ProjectRepos -Project $projectObj) | ForEach-Object { $_.path }) -join ', '
+$repoList = Format-ProjectRepos -Project $projectObj
 
 if ($DryRun) {
   "=== DRY RUN run-greta-seo (no se llamó a claude) ==="
@@ -120,9 +123,13 @@ Eres Greta, la especialista de growth de $($projectObj.name), corriendo tu REVIS
 
 Tu método completo está en la skill: LEE y sigue al pie el archivo $skillPath (usa el tool Read). No improvises el método; está todo ahí.
 
+Repos del producto montados (SOLO LECTURA — la skill dice cuál es la superficie de cada auditoría):
+$repoList
+
 Reglas duras de este turno:
-- READ-ONLY sobre prod (Supabase, GA4, GSC, CrUX/PSI). El ÚNICO write permitido es el archivo de memoria $memoryPath (con el tool Write). NUNCA escribas ningún otro archivo, y NUNCA escribas dentro de $prodRepo (ese repo es SOLO LECTURA, para la auditoría de frontend).
+- READ-ONLY sobre prod (Supabase, GA4, GSC, CrUX/PSI). El ÚNICO write permitido es el archivo de memoria $memoryPath (con el tool Write). NUNCA escribas ningún otro archivo, y NUNCA escribas dentro de ningún repo del producto ($prodRepo) (esos repos son SOLO LECTURA, para la auditoría de frontend).
 - Antes de proponer: LEE $memoryPath y reconcilia la disposición de cada hallazgo previo contra el estado de su issue [SEO] en Linear (Done => hecho, Canceled => wont-fix, comentario 'parcial/limitado' => hecho-parcial, sigue en Backlog => propuesto). No repitas lo ya propuesto ni lo marcado wont-fix.
+- VERIFICA CONTRA EL CÓDIGO antes de proponer (memory/CLAUDE.md § "Verifica contra el código, no contra esta base"): tu contexto de negocio PUEDE estar viejo. Confirma en el repo (ya sincronizado a main al inicio de la corrida) el archivo / ruta / metadata / schema que nombra tu propuesta; si ya está implementado o el código desmiente la premisa, NO lo propongas y anota qué dato quedó viejo. No afirmes un archivo:línea sin releerlo en la copia actual.
 - Salida en Linear (team $teamKey): un issue [Report] (SEO) (label agent-report, estado Backlog, sin asignar) + hasta 3-5 [Proposal] (SEO) NUEVOS (label agent-proposal + seo; estado Backlog; las 6 secciones canónicas de memory/CLAUDE.md). Al final del body de CADA issue agrega una línea '---' y debajo 'Generado por $signature'.
 - Al terminar, REESCRIBE $memoryPath con las filas actualizadas + las nuevas.
 - Si una fuente falla (ej. mcp__gsc__* no responde porque falta el prereq de la API/SA), DILO en el brief y sigue con el resto. No estimes números de memoria. No inventes datos.

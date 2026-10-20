@@ -183,6 +183,20 @@ $model = if ($agent.Model) { $agent.Model }
 $effortArgs = @()
 if ($agent.Effort) { $effortArgs += @('--effort', $agent.Effort) }
 
+# Regla de estado del issue para los agentes que PRODUCEN trabajo (Cody/Daly/Leda/Qualy):
+# cuando toman un pedido mueven el issue a In Progress para que en Linear se vea qué se
+# está trabajando (si no, el estado solo cambia de rebote cuando Cody abre un PR).
+# Los que SOLO contestan una consulta (Capi/Numa/Greta/Pico) NO tocan el estado. Mueven solo
+# el estado (este avance), nunca label/asignación/prioridad. Se appendea a los 4 modos de
+# producción de trabajo de abajo.
+$workStatusClause = @"
+- Estado del issue (IMPORTANTE): el avance de estado depende de SI ESTE PEDIDO te pone a producir trabajo tangible.
+  - Si el pedido te pide PRODUCIR algo (código/PR, una verificación de QA, un mockup, un draft, una publicación): apenas lo tomas, ANTES de generarlo, mueve el issue $IssueId a 'In Progress' con el Linear MCP (mcp__linear__save_issue, campo de estado = 'In Progress'), así en Linear se ve que lo estás trabajando. Esto vale AUNQUE necesites preguntarle algo a $ownerName para poder seguir: mueves igual y dices en la primera línea de tu comentario (después de la firma) que quedas esperando su respuesta para continuar.
+  - Si el pedido es SOLO una consulta que se contesta en tu comentario y NO deja trabajo en curso (p. ej. 'Leda: ¿esto va al backlog?', 'Cody: ¿es viable X?'): NO toques el estado — déjalo como está y responde la consulta. Un issue no debe quedar 'In Progress' sin que nadie lo esté trabajando.
+  - NUNCA retrocedas ni REABRAS un issue: si ya está en 'In Progress' o en un estado más avanzado — arrancado ('In Review') o YA CERRADO ('Done', 'Canceled', 'Duplicate', o cualquier otro estado de tipo completed/canceled que tenga el team) — déjalo como está (mover a In Progress uno cerrado como Duplicate lo reabriría). Solo mueves desde un estado sin empezar (Backlog / Todo / Triage); si dudas del estado actual, léelo primero con mcp__linear__get_issue.
+  - Mueves SOLO el estado (este avance); NUNCA toques label, asignación ni prioridad.
+"@
+
 # Contexto operativo del turno — depende del OperatingMode del agente.
 # Modos: 'comment-only' (Numa/Greta — read-only, solo comentan), 'lead-triage-and-create'
 # (Capi — triage + puede crear issues), 'creates-issues' (Pico), 'writes-code'
@@ -194,9 +208,10 @@ switch ($agent.OperatingMode) {
 Contexto operativo de este turno:
 - Estás respondiendo en el issue $IssueId de Linear (team $($projectObj.linear.teamKey), proyecto $($projectObj.name)).
 - El comentario que te invocó es el MÁS RECIENTE en el hilo del issue que empieza con '$($agent.Name):' (case-insensitive). Léelo + el resto del thread con el MCP de Linear para tener contexto.
-- Para fundamentar, lee el repo del producto en ``$($projectObj.productRepoPath)`` (sus archivos guía primero: CLAUDE.md / AGENTS.md si existe), y Supabase / GA4 / CrUX según corresponda.
+- Para fundamentar, lee los repos del producto (solo lectura; sus archivos guía primero: CLAUDE.md / AGENTS.md si existe) y Supabase / GA4 / CrUX según corresponda. Repos:
+$(Format-ProjectRepos -Project $projectObj)
 - Si la propuesta cumple las condiciones de tu system prompt para crear ticket, USA el Linear MCP para crearlo en team $($projectObj.linear.teamKey) con la convención EXACTA de ``memory/CLAUDE.md`` § "Linear destination convention" (label agent-proposal, Backlog, sin asignar, sin priority, sin cycle, body con las 6 secciones).
-- En TODOS los casos, deja UN comentario nuevo en el issue actual donde te invocaron. El comentario DEBE empezar con la firma exacta '${signature}: '. Si creaste un ticket, menciónalo con su ID y link (ej. "Issue $($projectObj.linear.teamKey)-XX creado, ver allá el detalle"); si no creaste, explica por qué (ambiguo / PRD / sensible / etc.).
+- En TODOS los casos, deja UN comentario nuevo en el issue actual donde te invocaron. El comentario DEBE empezar con la firma exacta '${signature}: '. Si creaste un ticket, menciónalo con su ID y link (ej. "Issue $($projectObj.linear.teamKey)-XX creado, ver allí el detalle"); si no creaste, explica por qué (ambiguo / PRD / sensible / etc.).
 - NO cambies estado, prioridad, asignación ni label del issue donde te invocaron. Solo en el issue NUEVO que tú creas como propuesta, puedes setear lo que dicte la convención.
 - Si generas copy customer-facing, sigue la convención del proyecto: $($projectObj.languageConvention)
 "@
@@ -218,11 +233,12 @@ Contexto operativo de este turno (LEAD — triage + puedes crear issues):
 Contexto operativo de este turno:
 - Estás respondiendo a un pedido en el issue $IssueId de Linear (team $($projectObj.linear.teamKey), proyecto $($projectObj.name)).
 - El comentario que te invocó es el MÁS RECIENTE en el hilo que empieza con '$($agent.Name):' (case-insensitive). Léelo + todo el thread con el MCP de Linear.
-- El repo del producto es ``$($projectObj.productRepoPath)``. ANTES de editar, verifica con ``git remote -v`` que el remote corresponde a $($projectObj.name) — si no matchea, aborta y repórtalo.
-- Sigue el WORKFLOW de tu system prompt al pie de la letra: leer los archivos guía del producto, sync main, branch ``cody/*``, edit, gating (los comandos exactos están en tu override de proyecto), commit, push, ``gh pr create``.
+- El repo del producto por defecto es ``$($projectObj.productRepoPath)``; si tu system prompt lista varios en "Repos donde puedes escribir", elige el repo destino con esa regla (``Repo destino:`` del brief de Daly > el issue > preguntar). ANTES de editar, verifica con ``git remote -v`` que el remote corresponde al repo destino de $($projectObj.name) — si no coincide, aborta y repórtalo.
+- Sigue el WORKFLOW de tu system prompt al pie de la letra: leer los archivos guía del producto, sync main, branch ``cody/*``, edit, gating (los comandos exactos están en tu override de proyecto, por repo si hay varios), commit, push, ``gh pr create``, y al final volver el checkout a main.
 - Las herramientas Bash disponibles incluyen git, el package manager del producto, node, gh y comandos read-only típicos. Úsalas con criterio. No corras nada fuera del workflow.
 - Al terminar (sea con PR abierta o con un fallo en el camino), deja UN comentario nuevo en el issue de Linear. El comentario DEBE empezar con la firma exacta '${signature}: '. Si abriste PR: incluye el link. Si fallaste: explica qué falló, dónde, y qué decisión te bloqueó.
-- NO mergees PRs. NO toques estado/label/asignación del issue de Linear ($ownerName lo promueve después de revisar el PR en GitHub).
+- NO mergees PRs. NO toques label ni asignación del issue de Linear ($ownerName promueve el PR a In Review / Done después de revisarlo en GitHub).
+$workStatusClause
 "@
   }
   'qa-tests' {
@@ -234,9 +250,10 @@ Contexto operativo de este turno:
   · Testear un PR / preview → encuentra el PR con ``gh`` (en ``$($projectObj.productRepoPath)``) y su URL de preview de Vercel, corre la suite del producto contra el preview SI el producto tiene suite (tu override de proyecto dice qué comandos existen) + pasada exploratoria del flujo que cambió con el Playwright MCP.
   · Smoke de prod → flujos clave NO DESTRUCTIVOS contra $($projectObj.productUrl).
   · Flujo puntual → testéalo en la URL que te indiquen (sandbox = flujo completo; prod = no destructivo).
-- Bash disponible: los comandos de test del producto (override), gh, git, node. Playwright MCP para browser real. Supabase read-only para verificar efectos de data. Respeta las reglas de Seguridad de tu system prompt: en prod, CERO mutaciones (nada de signups/pagos reales).
+- Bash disponible: los comandos de test del producto (override), gh, git, node. Playwright MCP para browser real. Supabase read-only para verificar efectos de data. Vercel read-only (mcp__vercel__*) para el estado y el build log del deployment de un preview y para errores de runtime (nunca el token por Bash ni el CLI de Vercel). Respeta las reglas de Seguridad de tu system prompt: en prod, CERO mutaciones (nada de signups/pagos reales).
 - Al terminar, deja UN comentario nuevo en el issue $IssueId con tu veredicto (✅ PASS / ❌ FAIL / ⚠️ con observaciones) + hallazgos concretos. DEBE empezar con la firma exacta '${signature}: '.
-- NO escribas código, NO abras PRs, NO mergees, NO toques estado/label del issue.
+- NO escribas código, NO abras PRs, NO mergees, NO toques label ni asignación del issue.
+$workStatusClause
 "@
   }
   'design-creates-mockups' {
@@ -249,11 +266,12 @@ Contexto operativo de este turno (DISEÑO + MOCKUP):
   (b) Carpeta nueva en ``design\$($projectObj.slug)\$IssueId-<slug>\`` (slug ≤4 palabras kebab-case, derivado del título del issue) con: ``brief.md`` (las 7 secciones EXACTAS de tu system prompt) + ``mockup.html`` (auto-contenido, replica las CSS variables del design system del proyecto) + ``mockup-notes.md``. Opcional: ``screenshots/before-after.md`` y ``mockup.svg``.
 - ANTES de proponer/diseñar: carga el design system del proyecto — tu override de proyecto dice exactamente dónde viven los tokens y el catálogo de componentes. NUNCA inventes tokens que no existan.
 - Si el pedido amerita ticket ``[Design]`` propio (accionable, ≤2 días de Cody), créalo en Linear team $($projectObj.linear.teamKey) con la convención EXACTA de ``memory\CLAUDE.md`` § "Linear destination convention" (label ``agent-proposal``, Backlog, sin asignar, sin priority, sin cycle, body con las 6 secciones), linkeando la carpeta ``design\$($projectObj.slug)\<...>\``. Si NO creas issue, explica brevemente por qué en el comentario (exploración / necesita conversación / fuera de scope).
-- NUNCA escribas en ``$($projectObj.productRepoPath)`` (repo del producto). Solo lees ese repo. Tus archivos van EXCLUSIVAMENTE a ``design\`` de este repo (el de agentes — tu cwd actual).
+- NUNCA escribas en ``$($projectObj.productRepoPath)`` ni en ningún otro repo del producto. Solo los lees (si el producto es multi-repo, tienes todos montados: diseña sobre la UI real del repo que corresponde y declara ``Repo destino: <key>`` al abrir ``## Spec para Cody``). Tus archivos van EXCLUSIVAMENTE a ``design\`` de este repo (el de agentes — tu cwd actual).
 - Mockup HTML: auto-contenido, abre con doble click (sin build, sin npm install, sin CDN runtime excepto Google Fonts). Replica las CSS variables del design system del proyecto al inicio del ``<style>`` (EXACTAS, del archivo que indica tu override). Iconos = SVG inline de [lucide.dev](https://lucide.dev). Fuentes del design system vía Google Fonts. Mobile-first (~390px) con media query desktop.
 - Si tu mockup incluye copy customer-facing (headers, microcopy, CTAs, errores), carga la brand bible del proyecto y respeta: $($projectObj.languageConvention)
 - A11y mínima obligatoria: foco visible, labels en inputs, headings jerárquicos, aria-label en icon buttons, contraste suficiente. Lo que no cumplas, decláralo en ``## A11y check`` del brief.
-- NO cambies estado, prioridad, asignación ni label del issue donde te invocaron. Si creas un issue [Design] NUEVO, aplica la convención canónica ahí.
+- NO toques prioridad, asignación ni label del issue donde te invocaron. Si creas un issue [Design] NUEVO, aplica la convención canónica ahí.
+$workStatusClause
 "@
   }
   'content-publishes' {
@@ -263,7 +281,8 @@ Contexto operativo de este turno (CONTENT — Leda interactiva):
 - El comentario que te invocó es el MÁS RECIENTE en el hilo del issue que empieza con '$($agent.Name):' (case-insensitive). Léelo + todo el thread con el MCP de Linear.
 - Detecta qué te están pidiendo según los patrones de tu override de proyecto (CANCEL / MEJORAR / BACKLOG u otros que el override defina) y ejecuta EXACTAMENTE ese flujo con el toolset que el override te da. Si el comentario no encaja en ningún patrón, comenta pidiendo clarificación SIN hacer nada (no inventes una acción).
 - NO publiques en este path interactivo salvo que tu override de proyecto lo permita explícitamente — en general el publish es de los crons.
-- NO toques estado/label/asignación del issue donde te invocaron — solo deja UN comentario nuevo.
+- NO toques label ni asignación del issue donde te invocaron — deja UN comentario nuevo (más el avance de estado de abajo).
+$workStatusClause
 - Si el comentario implica copy customer-facing, carga la brand bible del proyecto y respeta: $($projectObj.languageConvention)
 - Tu comentario DEBE empezar EXACTAMENTE con la firma '${signature}: '. Sin markdown bold, sin paréntesis.
 "@
@@ -274,7 +293,7 @@ Contexto operativo de este turno (CONTENT — Leda interactiva):
 Contexto operativo de este turno:
 - Estás respondiendo en el issue $IssueId de Linear (team $($projectObj.linear.teamKey), proyecto $($projectObj.name)).
 - El comentario que te invocó es el MÁS RECIENTE en el hilo del issue que empieza con '$($agent.Name):' (case-insensitive). Léelo + el resto del thread con el MCP de Linear para tener contexto.
-- Si necesitas datos, consulta Supabase read-only (sin PII, solo agregados). Cita los números, no inventes.
+- Si necesitas datos, consulta las fuentes read-only del proyecto que define tu override (Supabase, la DB de la app, GA4, Stripe...) — sin PII, solo agregados. Cita los números, no inventes. Si el dato depende de cómo lo genera el código, lee los repos del producto (solo lectura).
 - Deja UN solo comentario nuevo en el issue. Tu comentario DEBE empezar con la firma exacta '${signature}: ' (con espacio después de los dos puntos). Es obligatorio: el listener excluye comentarios que empiezan con 🤖, así no se loopea, y la firma le dice a $ownerName quién contestó.
 - NO cambies el estado, ni la prioridad, ni la asignación del issue. NO crees issues nuevos. Solo comentas.
 - Si generas copy customer-facing, sigue la convención del proyecto: $($projectObj.languageConvention)
@@ -328,8 +347,32 @@ Empieza ya. No me describas el plan — ejecútalo. Tu respuesta final puede ser
 # Cody suma Edit/Write/Bash para trabajar en el repo del producto; Capi solo lee.
 $allowed = $agent.AllowedTools
 
-# Dirs adicionales por-agente: el registry usa el placeholder {{PRODUCT_REPO_PATH}},
-# resuelto aquí contra el repo del producto DEL proyecto. `claude --add-dir` expande el
+# Repos del producto al día ANTES de que el agente los lea: la regla "verifica contra el
+# código" no sirve si la copia local está atrás del main o quedó en una rama de Cody — y los
+# agentes comment-only (Numa/Greta/Pico) NO tienen Bash para darse cuenta. Los wrappers dedicados
+# (Greta SEO/AEO, Cody scan, Capi roadmap) ya sincronizan; aquí lo hace el listener. Best-effort y
+# no bloqueante (Sync-ProjectRepos captura sus errores).
+# -NoSwitch: a diferencia de los crons, el listener dispara con CADA comentario a cualquier agente
+# y podría caer sobre una rama recién creada por Cody desde main (limpia, sin commits locales, <1 h)
+# que sync-product-repos devolvería a main, cortándole el checkout. Aquí: solo fetch + ff si YA está
+# en la rama default, nunca cambia de rama. Después le contamos al agente (comment-only, sin Bash)
+# en qué rama / cuántos commits atrás quedó cada repo, para que lo tenga en cuenta al verificar.
+if (-not $DryRun -and @($agent.AdditionalDirs).Count -gt 0) {
+  Sync-ProjectRepos -Project $projectObj -NoSwitch
+  $repoStatus = Format-ProjectReposStatus -Project $projectObj
+  if ($repoStatus) {
+    $systemPrompt = @"
+$systemPrompt
+
+Estado de las copias locales del producto que vas a leer — tenlo en cuenta al "verificar contra el código" y dilo en tu comentario si cambia tu respuesta:
+$repoStatus
+Si un repo figura atrás de origin o en otra rama, el código que leas puede no ser el del main actual.
+"@
+  }
+}
+
+# Dirs adicionales por-agente: el registry usa los placeholders {{PRODUCT_REPO_PATH}}
+# (repo primario) o {{PRODUCT_REPOS}} (todos), resueltos aquí contra el proyecto. `claude --add-dir` expande el
 # sandbox de file tools sin pisar el cwd (que sigue siendo la raíz del repo de agentes).
 $addDirArgs = Resolve-AgentAdditionalDirs -Agent $agent -Project $projectObj
 
@@ -347,6 +390,7 @@ if ($DryRun) {
   "Allowed : $allowed"
   "AddDirs : $(if ($addDirArgs) { $addDirArgs -join ' ' } else { '(ninguno)' })"
   "Team    : $($projectObj.linear.teamKey) | SUPABASE_PROJECT_REF: $env:SUPABASE_PROJECT_REF"
+  "Vercel  : $(Format-ProjectVercelPin)"
   "--- System prompt resuelto (primeras 30 líneas) ---"
   ($systemPrompt -split "`n" | Select-Object -First 30) -join "`n"
   exit 0

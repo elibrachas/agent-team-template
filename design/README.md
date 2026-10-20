@@ -1,6 +1,6 @@
 # `design/` — output de Daly 🎨
 
-Carpeta de **mockups y design briefs** que genera Daly (UX/UI designer del equipo). Es el equivalente de `queue/` pero para diseño: cada vez que Daly diseña algo, deja una carpeta acá. Va **versionada en git** — la historia visual del producto vive en `git log design/`.
+Carpeta de **mockups y design briefs** que genera Daly (UX/UI designer del equipo). Es el equivalente de `queue/` pero para diseño: cada vez que Daly diseña algo, deja una carpeta aquí. Va **versionada en git** — la historia visual del producto vive en `git log design/`.
 
 ## Estructura
 
@@ -14,7 +14,7 @@ design/
 │   │   ├── mockup-notes.md            ← anotaciones (qué token va dónde, a11y, etc.)
 │   │   └── screenshots/               ← opcional: capturas before/after de Playwright
 │   └── implemented/                   ← archivo: mockups ya implementados por Cody
-│       └── ACM-12-empty-state/        ← (Cody los mueve acá al abrir su PR)
+│       └── ACM-12-empty-state/        ← (Cody los mueve aquí al abrir su PR)
 └── <otro-proyecto>/
 ```
 
@@ -78,4 +78,4 @@ Qué cumple (foco visible, contraste, semántica, mobile-first) y qué queda com
 - **Versionado junto con el sistema de agentes** — `git log design/` cuenta la historia visual.
 - **Multi-proyecto**: la estructura `design/<slug>/` soporta varios productos.
 
-Cody (que corre con cwd en el repo de agentes pero edita el repo del producto vía `--add-dir`) lee los briefs desde acá, sin copiar archivos al producto. El PR de Cody linkea la carpeta en su body para trazabilidad.
+Cody (que corre con cwd en el repo de agentes pero edita el repo del producto vía `--add-dir`) lee los briefs desde aquí, sin copiar archivos al producto. El PR de Cody linkea la carpeta en su body para trazabilidad.

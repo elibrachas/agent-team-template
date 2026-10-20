@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/mcp.json",
-  "_comment_": "MCP config de Qualy (QA tester). Separado del growth/.mcp.json a proposito: asi los demas agentes y los crons (run-skill.ps1, que tambien carga growth/.mcp.json) NO levantan el browser de Playwright en cada corrida. respond-linear.ps1 elige este archivo cuando el agente tiene McpConfig seteado. Servers: linear (comentar el reporte), supabase read-only (verificar efectos de data, NUNCA PII), playwright (browser real headless para e2e exploratorio).",
+  "_comment_": "MCP config de Qualy (QA tester). Separado del growth/.mcp.json a proposito: asi los demas agentes y los crons (run-skill.ps1, que tambien carga growth/.mcp.json) NO levantan el browser de Playwright en cada corrida. respond-linear.ps1 elige este archivo cuando el agente tiene McpConfig seteado. Servers: linear (comentar el reporte), supabase read-only (verificar efectos de data, NUNCA PII), playwright (browser real headless para e2e exploratorio), vercel read-only (estado/build de los previews y logs de runtime).",
   "mcpServers": {
     "linear": {
       "type": "http",
@@ -22,6 +22,17 @@
       "_comment_": "Playwright MCP oficial de Microsoft (@playwright/mcp). Browser real headless para QA exploratorio: navegar, click, snapshot accesible, screenshots, errores de consola/red. Requiere browsers instalados una vez: 'pnpm exec playwright install chromium' en el repo del producto. Flags según github.com/microsoft/playwright-mcp.",
       "command": "npx",
       "args": ["-y", "@playwright/mcp@latest", "--headless", "--isolated", "--browser", "chromium"]
+    },
+    "vercel": {
+      "_comment_": "Vercel READ-ONLY (scripts/mcp-vercel): deploys, build logs y errores de runtime, pineado a los proyectos de project.json → vercel (lo exporta scripts/project.ps1 como VERCEL_TEAM_ID / VERCEL_PROJECTS). Solo GET y salida redactada: el token (VERCEL_API_TOKEN, .env.server) es de todo el team, por eso nunca se usa por curl ni por el CLI. Logs de runtime: ~24 h de retención. Sin token o sin pin, cada tool responde 'fuente Vercel no configurada'. Requiere npm ci en scripts/mcp-vercel. Detalle: docs/vercel-readonly-source.md. Qualy lo usa en log-review (diario) y para el estado/build de los previews de los PRs.",
+      "command": "node",
+      "args": ["scripts/mcp-vercel/index.mjs"],
+      "env": {
+        "VERCEL_API_TOKEN": "${VERCEL_API_TOKEN:-}",
+        "VERCEL_TEAM_ID": "${VERCEL_TEAM_ID:-}",
+        "VERCEL_PROJECTS": "${VERCEL_PROJECTS:-}",
+        "VERCEL_PROJECT_ID": "${VERCEL_PROJECT_ID:-}"
+      }
     }
   }
 }

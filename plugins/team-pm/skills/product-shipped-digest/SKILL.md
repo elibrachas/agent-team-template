@@ -13,6 +13,7 @@ inputs:
   - "roadmap.md del proyecto (en el contextDir, projects/<slug>/roadmap.md): el plan, para mapear lo shipeado contra lo planeado"
 outputs:
   - "Linear (team del proyecto): un [Report] 'Qué se actualizó en la app — semana <fecha>' (label agent-report, Backlog, sin asignar) con las seguidoras configuradas del proyecto (project.json → shippedDigestFollowers) como subscribers"
+  - "Discord (solo si el proyecto lo pide con project.json → shippedDigestDiscordWebhookVar): un resumen corto entre <discord>…</discord> al final de tu respuesta, que postea el wrapper. El system prompt del turno te lo pide con el formato; si no te lo pide, no lo agregues"
   - "queue/pending-review/YYYY-MM-DD-<project>-product-shipped-digest.md (brief; lo escribe el wrapper)"
 cost_budget_usd: 3.00
 ---
@@ -40,7 +41,9 @@ Los **últimos 7 días** (de viernes a viernes). Calcula la fecha de corte y ús
 - Si `gh` no está disponible/autenticado, sigue solo con git log + Linear y decláralo. No inventes PRs.
 
 ### 3. Lo que se cerró en el plan — Linear (MCP)
-- Lista los issues del team del proyecto que pasaron a **Done / completados en los últimos 7 días** (y los referenciados por los commits de arriba). Esos son los items del plan que efectivamente se ejecutaron.
+- Lista los issues del team del proyecto que pasaron a **Done / completados en los últimos 7 días** (y los referenciados por los commits de arriba).
+- **Cuenta como "hecho" SOLO issues de trabajo.** Deja AFUERA los **registros**, identificados por el **PREFIJO del título**: `[Report]`, `[Plan]`, `[Topics]`, o los **ticks** de cron (p. ej. "tick limpio", "0 posts para publicar"). **NO filtres por el label `agent-report`**: Qualy y el health-check se lo ponen también a hallazgos ACCIONABLES (`[QA]`, `[QA-sec]`, `[QA-front]`, `[Alert]`) que SÍ son trabajo — excluirlos por el label perdería ships reales. Un registro que se archiva a Done NO es un cambio que salió a la app — contarlo infla el "issues cerrados" cada vez que se limpia el backlog (una limpieza puede pasar a Done una veintena de issues de los que solo un tercio son ships reales). Los **items del plan que efectivamente se ejecutaron** son los de trabajo que quedan después de ese filtro.
+- Cuenta los registros archivados **aparte**, en una sola línea (va en `## Métricas de la semana`), nunca mezclados con lo shipeado.
 
 ### 4. Cruce con el plan — `roadmap.md`
 - Lee `roadmap.md` del proyecto (en el contextDir). Mapea: ¿qué de lo shipeado estaba en el plan (y en qué rank)? ¿qué shipeó que NO estaba en el plan (trabajo no planificado — vale notarlo)? ¿qué seguía planeado y NO avanzó? **No reescribas `roadmap.md`** (eso es de Capi); solo lo lees para el cruce.
@@ -52,7 +55,7 @@ Team del proyecto, label `agent-report`, estado `Backlog`, sin asignar. Body (le
 - `## Resumen` — 2-4 líneas: lo más importante que cambió esta semana.
 - `## Qué se actualizó` — cambios agrupados por área/tema, cada uno con el issue de Linear linkeado (`<TEAM>-XX`) y, si aporta, la PR. Concreto pero legible (no un dump de commits).
 - `## Mapeo al plan` — qué de esto estaba en el roadmap (avanzó/cerró), qué fue no planificado, qué del plan sigue pendiente.
-- `## Métricas de la semana` (si hay señal limpia y barata) — ej. cantidad de PRs mergeadas, issues cerrados. Opcional; no inventes.
+- `## Métricas de la semana` (si hay señal limpia y barata) — ej. cantidad de PRs mergeadas e **issues de trabajo cerrados** (SIN los registros, ver paso 3). Suma una línea aparte: "Registros archivados esta semana: N" (reportes/planes/ticks que pasaron a Done), para que quede claro que no son ships. Opcional; no inventes.
 - `## Generado por` — `---` + `Generado por 🤖 Pico 🎯`.
 
 ### Seguidoras del issue (OBLIGATORIO)
@@ -77,6 +80,7 @@ Markdown, arranca con `🤖 Pico 🎯:` + un resumen corto (qué shipeó, cuánt
 - ¿Agrupé los commits por tema en vez de tirar la lista cruda?
 - ¿Linkeé cada cambio a su issue de Linear cuando existe?
 - ¿Mapeé lo shipeado contra el `roadmap.md`?
+- ¿El "issues cerrados" cuenta SOLO trabajo, excluyendo registros por **prefijo de título** (`[Report]` / `[Plan]` / `[Topics]` / ticks) y NO por el label `agent-report` (que también lo tienen los hallazgos accionables `[QA]`/`[Alert]`), y reporté los registros archivados en una línea aparte?
 - ¿Sumé a las seguidoras de `shippedDigestFollowers` (o reporté por qué no pude)?
 - ¿No corrí ningún comando que mute el repo? ¿No reescribí `roadmap.md`?
 - ¿El issue cierra con `Generado por 🤖 Pico 🎯`?

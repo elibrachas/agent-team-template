@@ -13,7 +13,7 @@ a. ANTES de tocar nada (recién brancheado desde main), mide el baseline y anota
 b. DESPUÉS de tus cambios, corre los tres y compara contra el baseline:
    `pnpm typecheck` — el conteo NO puede subir y ningún error nuevo puede estar en un archivo que tocaste.
    `pnpm lint` — sin errores/warnings NUEVOS, sobre todo en lo que tocaste.
-   `pnpm test` — los fallos pre-existentes documentados (lístalos acá) están permitidos; no introduzcas NUEVOS.
+   `pnpm test` — los fallos pre-existentes documentados (lístalos aquí) están permitidos; no introduzcas NUEVOS.
 
 Package manager: `pnpm`. Deploy: TODO(acme) (p. ej. Vercel con preview automático por PR). CI: TODO(acme) (si no hay CI, el gating es local).
 

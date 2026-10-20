@@ -1,10 +1,10 @@
 ---
 name: content-blog-publish-tick
-description: Use when running the hourly Leda tick — checks for scheduled posts whose publish window expired, verifies they weren't cancelled, and flips them to published in the CMS. Pairs with content-blog-publisher (which schedules) to implement the 6h cancellation window. Lightweight, Haiku-friendly.
+description: Use when running the daily Leda tick (08:00, server time) — checks for scheduled posts whose ledaPublishAt already passed, verifies they weren't cancelled, and flips them to published in the CMS. Pairs with content-blog-publisher (which schedules): a post written by the early-morning cron goes out with the next morning's tick and can be cancelled until then. Lightweight: when nothing is due, the wrapper answers without calling the model.
 hitl_level: 2
 owner: owner
 agent: leda
-schedule: "0 * * * *"   # cada hora en punto
+schedule: "0 8 * * *"   # una vez por día, 08:00 hora del server
 inputs:
   - "CMS (p. ej. Payload): posts con ledaStatus=scheduled y ledaPublishAt < now()"
   - "Linear: thread del issue [Content] correspondiente (para detectar la señal de cancelación)"
@@ -16,7 +16,7 @@ cost_budget_usd: 0.30
 
 # content-blog-publish-tick
 
-> **HITL 2 — ejecuta el publish después de la ventana.** Tick horario. Liviano (Haiku alcanza): lista los programados vencidos, chequea la señal de cancelación, publica o aborta. Sin pulido, sin imagen, sin escritura larga.
+> **HITL 2 — ejecuta el publish después de la ventana.** Tick diario, a las 08:00 (hora del server). Liviano: lista los programados vencidos, chequea la señal de cancelación, publica o aborta. Sin pulido, sin imagen, sin escritura larga.
 
 ## Antes de correr
 
@@ -32,9 +32,9 @@ cost_budget_usd: 0.30
 powershell -File scripts\leda-helpers.ps1 -Action list-scheduled-due
 ```
 
-Output: array de posts donde `ledaStatus='scheduled'` AND `ledaPublishAt < now()`. Idealmente vacío en la mayoría de los ticks (el publisher es diario, el tick es horario — solo cae trabajo cada ~6h).
+Output: array de posts donde `ledaStatus='scheduled'` AND `ledaPublishAt < now()`. Lo normal es un post por tick: el que escribió el publisher en la madrugada anterior (su `ledaPublishAt` quedó a media mañana, después del tick de ese día).
 
-**Si está vacío**: sal sin hacer nada. Brief mínimo: "Tick limpio — 0 posts para publicar." Costo ~$0.05 (Haiku, 1 turno).
+**Si está vacío**: sal sin hacer nada. Brief mínimo: "Tick limpio — 0 posts para publicar." En el cron casi nunca llegas a este caso: `run-skill.ps1` corre esta misma lista antes de llamarte y, si viene vacía, deja el brief y sale sin modelo.
 
 ### Paso 2: por cada post scheduled-due
 
@@ -61,7 +61,7 @@ powershell -File scripts\leda-helpers.ps1 -Action cancel-schedule -PostId <postI
 Comentar en el issue (con la firma exacta `🤖 Leda 📖:` por anti-loop):
 
 ```
-🤖 Leda 📖: Cancelado por tu pedido. El post queda como draft en el CMS con ledaStatus='cancelled'. Si quieres reprocesarlo, limpia ledaStatus en el admin del CMS (vuelve a quedar elegible para el cron). Si quieres descartarlo definitivamente, elimina el draft.
+🤖 Leda 📖: Cancelado por tu pedido. El post queda como draft en el CMS con ledaStatus='cancelled' (el cron diario no toma drafts: escribe desde el banco de ideas). Si quieres cambios, pídemelos aquí con `Leda: ...` y después lo publicas tú desde el admin. Si no va, elimina el draft.
 ```
 
 Mover el issue a status `Cancelled` (o `Done` si Cancelled no existe en este team — ver convención).
@@ -112,11 +112,11 @@ Mover el issue a status `Done`.
 
 ## Costo
 
-USD <total_cost_usd> (Haiku — bajo).
+USD <total_cost_usd>.
 
 ## Próximo tick
 
-A la hora siguiente.
+Mañana a las 08:00 (hora del server).
 ```
 
 ## Autoauditoría
@@ -127,8 +127,9 @@ A la hora siguiente.
 
 ## Notas de runtime
 
-- Schedule: cron horario (`0 * * * *`).
-- Modelo recomendado: Haiku 4.5 (el workflow n8n pasa `-Model claude-haiku-4-5-20251001`).
-- Costo objetivo: <USD 0.30 / corrida; típicamente <$0.10 (ticks vacíos).
+- Schedule: una vez por día, a las 08:00 (hora del server; `automation/n8n/leda-publish-tick.json`). Un tick horario no hace falta: el publisher de la madrugada deja `ledaPublishAt` a media mañana, así que cada post sale con el tick de la mañana siguiente, ~28 h después de escrito, y hasta ese tick se puede frenar con `Leda: stop`. El health check diario (`scripts/run-health-check.ps1`) mira el último tick: avisa si no dejó brief (no corrió) o si un post que vencía antes de ese tick sigue programado (el tick no lo publicó).
+- Pre-check sin modelo: `run-skill.ps1` corre `list-scheduled-due` antes de llamar a claude. Si la lista viene vacía, escribe el brief "Tick limpio" (sin pisar el de una corrida anterior del día), anota la corrida en `audit\` con `model: precheck` y sale. Si el helper falla o hay posts, corre el agente como siempre. `-NoPreCheck` lo saltea para probar la skill a mano.
+- Modelo: Sonnet, el de Leda en `agents.ps1`. No Haiku: alucinaba que no podía ejecutar PowerShell y no publicaba. El JSON del workflow no pasa `-Model`.
+- Costo objetivo: <USD 0.30 / corrida con posts; los ticks vacíos no llaman al modelo.
 - Concurrencia: la corrida es atómica por post (lock implícito por la transición `scheduled` → `published_by_leda`). Si por algún motivo dos ticks corrieran a la vez (raro), el segundo no encuentra el post como scheduled-due y no hace nada.
 - Si el CMS responde 5xx en el flip: loguea el error, **no marques** `ledaStatus` (queda scheduled-due, el próximo tick reintenta). Idempotente.

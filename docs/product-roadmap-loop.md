@@ -46,7 +46,7 @@ Todo es **HITL 1**: solo lectura sobre producción; el único write de archivo e
 
 | Agente | Rol en el loop | Skill | Wrapper | Cadencia sugerida | Modelo |
 |--------|----------------|-------|---------|-------------------|--------|
-| **Pico** 🎯 | Genera ideas de producto + datos | `product-idea-scan` | `run-skill.ps1` (loadout del registry) | semanal | Opus 4.8 |
+| **Pico** 🎯 | Genera ideas de producto + datos | `product-idea-scan` | `run-skill.ps1` (loadout del registry) | semanal | Opus 5.5 |
 | **Cody** 💻 | Detecta deuda técnica (SOLO LECTURA) | `tech-debt-scan` | `run-cody-scan.ps1` (dedicado, sin Edit/Write) | semanal | Sonnet 4.6 |
 | **Numa** 📊 | Anomalía del funnel → propuesta | `funnel-monitor` (extendido) | `run-skill.ps1` | cada pocas horas | Sonnet |
 | **Capi** 🫒 | Prioriza, secuencia, dueño del plan | `pm-progress-review` | `run-capi-roadmap.ps1` (dedicado, Write → `roadmap.md`) | lun/mié/vie | Opus 4.8 |
@@ -71,7 +71,7 @@ Cierra el lazo: muestra qué de lo planeado **efectivamente se lanzó**. Es dist
 
 - **Skill** `product-shipped-digest` (Pico), wrapper dedicado `run-pico-shipped.ps1` (solo lectura + Bash para `git log` / `gh`). Si tienes varios proyectos, escalona los horarios (por ejemplo, 30 minutos de diferencia) para no correr en simultáneo contra la misma suscripción.
 - **Fuentes**: (1) commits de la semana en `origin/main` del repo del producto (`git fetch` + `git log --since="7 days ago"`), (2) opcional: PRs mergeados vía `gh`, (3) issues que pasaron a Done en Linear, (4) cruce contra `roadmap.md` (qué del plan avanzó / qué no estaba planificado / qué sigue pendiente). Pico NO reescribe `roadmap.md`.
-- **Output**: un `[Report] Qué se actualizó en la app — semana <fecha>` en el team del proyecto, con las personas configuradas en `project.json → shippedDigestFollowers` como seguidoras (vía `subscriberIds`; si el MCP no lo soporta, @-mención que auto-suscribe).
+- **Output**: un `[Report] Qué se actualizó en la app — semana <fecha>` en el team del proyecto, con las personas configuradas en `project.json → shippedDigestFollowers` como seguidoras (vía `subscriberIds`; si el MCP no lo soporta, @-mención que auto-suscribe). **Aviso por Discord, opcional por proyecto** (`project.json → shippedDigestDiscordWebhookVar` = el NOMBRE de la env var de `.env.<slug>` con el webhook, nunca el webhook): además del issue, el wrapper postea un resumen corto que Pico deja entre una línea `<discord>` y una línea `</discord>`. Si el canal es el mismo del pulso diario de Numa, el mensaje sale con el nombre de Pico, no con el del dueño del webhook.
 - **Auth de git**: el wrapper inyecta `GH_TOKEN` como `http.https://github.com/.extraheader` (el mismo método que usa GitHub Actions) para que `git fetch` autentique un repo privado en headless.
 
 ## El gate humano (HITL)

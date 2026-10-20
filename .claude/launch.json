@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "lead-dashboard",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["lead/app/server.mjs"],
+      "port": 4747
+    },
+    {
+      "name": "lead-dashboard-simulacion",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["lead/app/server.mjs", "--dry-run", "--port=4748"],
+      "port": 4748
+    }
+  ]
+}

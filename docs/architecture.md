@@ -17,6 +17,7 @@ El roster es UNO (core: `scripts/agents.ps1` + wrappers + listener). Cada proyec
 │  Claude Code / Cowork desktop (máquina del owner)           │
 │  - Exploración, decisiones, revisión de PRs                 │
 │  - Mismo marketplace de plugins instalado                   │
+│  - Project Lead (.claude/skills/project-lead + lead/)       │
 └───────────────────────────┬─────────────────────────────────┘
                             │ git push / pull
                             ▼
@@ -47,6 +48,12 @@ El roster es UNO (core: `scripts/agents.ps1` + wrappers + listener). Cada proyec
        Supabase      GA4      Search      GitHub (PRs
       (read-only)             Console     de Cody/Alfred)
 ```
+
+Además de esas, otras fuentes de solo lectura entran por MCP según el proyecto: Vercel (deploys y logs, `docs/vercel-readonly-source.md`), una base MySQL del producto (`docs/mysql-readonly-source.md`), Google Ads (`docs/google-ads-readonly-source.md`), Stripe y Core Web Vitals.
+
+## El Project Lead (capa de decisión)
+
+Por encima del roster, en la máquina del owner, corre el **Project Lead**: Claude Code con la skill `.claude/skills/project-lead` y las piezas de `lead/` (sync determinístico de Linear y GitHub, un CLI de estado local y un script que cambia issues). No es un agente del server ni reemplaza a Capi: cada mañana junta lo que dejaron los agentes en todos los proyectos, lo verifica contra lo que ya salió en cada app, propone hasta tres tareas cruzadas entre proyectos y, con un sí, las sigue hasta producción. Los agentes no dependen de él: si la máquina del owner está apagada, los crons y el listener siguen. Detalle: `lead/README.md`.
 
 ## Flujo típico (ejemplo: revisión SEO semanal)
 

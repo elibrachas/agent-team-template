@@ -37,10 +37,22 @@ El paso 5 es el que convierte un conjunto de prompts en un sistema que mejora: l
 ## Lecciones detrás de las reglas
 
 ### Los agentes proponen, las personas deciden
-Cada skill declara un nivel HITL. Nivel 1 solo lee y reporta; nivel 2 propone y espera un OK explícito; nivel 3 (ejecución autónoma con rollback) existe en el diseño pero **no se usa**. No es desconfianza en el modelo: es que un error de un agente en producción cuesta mucho más que el minuto que lleva aprobar.
+Cada skill declara un nivel HITL. Nivel 1 solo lee y reporta; nivel 2 propone y espera un OK explícito; nivel 3 (ejecución autónoma con rollback) se usa en un único caso: la carga del banco de ideas del blog. No es desconfianza en el modelo: es que un error de un agente en producción cuesta mucho más que el minuto que lleva aprobar.
+
+### Una aprobación que no suma control es un cuello de botella
+El banco de ideas del blog empezó en nivel 2: Leda proponía la tanda y esperaba un "carga los topics". Una semana la aprobación no llegó, el banco se vació y el blog dejó de publicar. El filtro que decide qué idea entra (¿hay evidencia de demanda?, ¿ya hay una nota para esa pregunta?, ¿existe lo que necesita?) ya hacía todo el control; la aprobación solo agregaba espera. Por eso esa skill pasó a nivel 3: carga sola, deja el registro en un issue y la vuelta atrás es borrar la idea antes de que se escriba. La regla general sigue siendo la contraria: sube de nivel solo lo que se deshace fácil y deja rastro.
 
 ### Los issues nacen en Backlog, sin asignar y sin prioridad
 Un agente que asigna o prioriza está decidiendo qué trabaja el equipo. Esa convención (label `agent-proposal`, estado `Backlog`, título `[Proposal] ...`, cuerpo con 6 secciones fijas) hace que todo lo generado por agentes sea fácil de filtrar, de revisar en bloque y de descartar sin culpa.
+
+### Registros y decisiones van por separado
+Con varios crons por proyecto, el Backlog se llena de reportes que no piden nada y las propuestas de verdad quedan enterradas: llegó un punto en que casi la mitad de los issues abiertos eran registros y había que cerrarlos a mano. La regla quedó así: todo nace en `Backlog`, pero una **decisión** (propuesta, alerta, hallazgo) lleva `agent-proposal` y espera a una persona, y un **registro** (reporte, digest, tick) lleva `agent-report`, un título fijo por serie y un issue por corrida. Ningún agente cierra sus registros: el Project Lead los archiva a los 2 días. Y una corrida sin novedades no crea issue: alcanza con el espejo local.
+
+### La memoria envejece: verifica contra el código
+La base de conocimiento de este repo (`project.json`, `data-model.md`, los overrides, `memory/`) describe el producto en un momento, y el producto cambia todos los días por fuera de aquí. En una revisión, una buena parte de las propuestas abiertas pedía algo ya hecho o partía de una premisa vieja (un proveedor que ya se había migrado, una función que se había borrado). Por eso todo agente que propone o diagnostica confirma el hecho en la rama principal del repo del producto antes de afirmarlo, y si el código desmiente a la base, manda el código y lo dice para que se corrija.
+
+### Decidir es el cuello de botella
+Cuando los agentes ya generan y priorizan bien, lo que se acumula son las decisiones pendientes: el mismo pedido repetido semana tras semana en el `[Plan]`. El Project Lead existe para eso: no genera más ideas, arma cada decisión para que se conteste con un sí o una letra, hace solo lo de bajo riesgo que se deshace con un clic y sigue lo aprobado hasta que está en producción.
 
 ### La firma anti-loop no es decorativa
 Los agentes comentan en Linear con la API key de una persona. Sin una marca, el listener vería su propio comentario como un pedido nuevo y el agente se respondería a sí mismo. Por eso cada respuesta arranca **exactamente** con `🤖 <Nombre> <Emoji>:` y el listener ignora todo lo que empiece con `🤖`. "Exactamente" importa: un `**` de markdown o un paréntesis alcanzan para romperlo.
@@ -58,7 +70,7 @@ En modo headless no hay nadie para aprobar un permiso, así que cada wrapper pas
 Si el cambio mejora **cómo actúa un agente** en general (su método, sus hard stops), va al core (`scripts/agents.ps1`) y beneficia a todos los proyectos. Si cambia **el dominio** (tablas, tono, comandos de test, archivos que no se tocan), va al override del proyecto. Esta regla es la que permite que un mismo equipo opere varios productos sin que el contexto de uno contamine al otro.
 
 ### El contexto es el producto
-La mayor parte de la calidad de un agente sale de lo que lee al arrancar: `brand-bible.md`, `glossary.md`, `data-model.md`, `icp.md`. Un glosario con la definición exacta de cada métrica evita que dos agentes calculen "conversión" de dos formas. Vale la pena invertir más tiempo acá que en afinar prompts.
+La mayor parte de la calidad de un agente sale de lo que lee al arrancar: `brand-bible.md`, `glossary.md`, `data-model.md`, `icp.md`. Un glosario con la definición exacta de cada métrica evita que dos agentes calculen "conversión" de dos formas. Vale la pena invertir más tiempo aquí que en afinar prompts.
 
 ### Los números, con su n
 Con volúmenes chicos, un 50% de caída puede ser pasar de 2 a 1. Los agentes de data reportan siempre el absoluto junto al porcentaje, declaran los caveats de la fuente y, si una query falla, lo dicen en vez de estimar de memoria.
@@ -68,7 +80,11 @@ Por defecto, un modelo equilibrado. Los agentes de alto impacto (propuestas de p
 
 ### Detalles técnicos que costaron caro
 - PowerShell 5.1 lee los archivos sin BOM como ANSI: los `.ps1` con emojis o tildes van en **UTF-8 con BOM**, y los JSON se leen con `-Encoding UTF8`. Si no, los acentos llegan rotos a los prompts.
-- Un error de sintaxis en `scripts/agents.ps1` rompe a **todos** los agentes a la vez: se valida el parseo antes de cada cambio.
+- Un error de sintaxis en `scripts/agents.ps1` rompe a **todos** los agentes a la vez: se valida el parseo antes de cada cambio, con `scripts/check-ps1-parse.ps1`. Ojo con el one-liner obvio: `ParseFile` devuelve los errores por un parámetro `[ref]` y no tira excepción, así que gatear por `$?` dice "OK" aun con el script roto.
+- Cuando un proveedor no tiene tokens de solo lectura (Vercel, Google Ads), el solo-lectura se arma del lado propio: un MCP que solo hace GET a paths fijos con un pin de proyectos, un rol de solo lectura en la cuenta, y un nombre de variable que el CLI del proveedor no tome solo del entorno.
+- Los logs de runtime del hosting suelen guardarse ~24 h: un review semanal solo ve el último día. Si importa, el review es diario o lo dice en el reporte.
+- Una función que el hosting mata por tiempo (timeout) no llega a correr su `catch`: no deja rastro en la base. Esa falla solo se ve en los logs.
+- Un commit de un agente puede salir con otra identidad (autor o email de otra cuenta) aunque el listener fije `GIT_AUTHOR_*` / `GIT_COMMITTER_*`: basta una subshell que no herede el entorno y git cae al `user.email` local del repo. Algunos hostings autorizan el deploy del preview por el email del autor y lo bloquean. Por eso Cody, antes del push, compara autor y committer de sus commits contra las variables fijadas y, si no coinciden, rehace el commit con `--amend --reset-author` (mismo árbol).
 - Los workflows de n8n versionados pueden divergir de los que están vivos. Antes de reimportar uno, exporta el vivo y compara.
 - Nunca clones el repo dentro de una carpeta sincronizada (OneDrive, Dropbox, iCloud): corrompen `.git/`.
 
@@ -81,5 +97,6 @@ No necesitas los 9 agentes, n8n ni un server para aprovechar el método. Un orde
 3. **Cody con PRs.** Suma el agente que escribe código, con su lista de archivos que no se tocan y los comandos de gating del producto.
 4. **Crons.** Automatiza los reportes que ya leías a mano.
 5. **Alfred.** Cuando ya tengas errores repetidos que valga la pena corregir en el sistema.
+6. **Project Lead.** Cuando lo que se acumula sean tus decisiones y no el trabajo de los agentes (sobre todo con más de un proyecto).
 
 Cada paso funciona por sí solo; si uno no te aporta, no hace falta el siguiente.

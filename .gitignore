@@ -4,6 +4,9 @@
 !.env.example
 # Templates por proyecto (.env.<slug>.example) SÍ se versionan; los reales (.env.<slug>) no.
 !.env.*.example
+# 1Password + age (scripts/op-env.mjs): el template con referencias op:// SÍ se versiona;
+# .env.local (texto plano) y .env.local.age (cifrado por máquina) quedan afuera por `.env.*`.
+!.env.local.tpl
 *.pem
 *.key
 secrets/
@@ -20,8 +23,15 @@ queue/rejected/*
 !queue/pending-review/.gitkeep
 !queue/approved/.gitkeep
 !queue/rejected/.gitkeep
+# Staging desechable con los manifests de deps de los otros proyectos (cruce de vulnerabilidades de Qualy)
+queue/.deps-stage/
+# Backups con fecha de los archivos que sync-agents-repo.ps1 descartó para poder hacer fast-forward
+queue/sync-backups/
 audit/*
 !audit/.gitkeep
+# Project Lead: snapshot de Linear, plan del día, tareas y registro de decisiones (ver lead/README.md)
+lead/state/*
+!lead/state/.gitkeep
 
 # Eval results
 evals/results/

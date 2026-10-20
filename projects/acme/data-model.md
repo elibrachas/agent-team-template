@@ -42,6 +42,8 @@ _Guía_: cómo se registra el canal de adquisición y los eventos del funnel; de
 
 ### `user_acquisition` — canal por usuario (opcional)
 - `channel_first`, `channel_last`, `utm_*`. Forward-only desde que se implementó.
+- `first_touch_gclid`, `last_touch_gclid` (o el click id de tu red de ads): lo que prueba que el usuario vino de **un anuncio**. Ojo: un canal `google` (o `paid_search`) no siempre es pago — la función que deriva el canal suele devolver lo mismo para un `utm_source` manual sin click id. Para métricas de canal pago (CAC, ROAS), exige el click id.
+- _Guía_: documenta dónde vive la derivación del canal en el repo del producto (una función pura, única fuente del mapeo: ninguna skill lo reimplementa) y verifica contra la base, con fecha, que el click id efectivamente se captura en las landings de ads. Si nunca lo verificaste, dilo aquí: el canal pago no es confiable hasta entonces.
 
 ## Views agregadas (canónicas)
 
@@ -86,7 +88,37 @@ where created_at >= now() - interval '28 days'
 group by 1;
 ```
 
-_Otras métricas a documentar según tu negocio_: ARPU, tasa de recompra/renovación, tiempo a primera compra, CAC por canal (requiere tabla de gasto en ads).
+### CAC por canal
+
+**Gasto**: se lee en vivo del MCP read-only de Google Ads (`mcp__google-ads__*`, solo Numa y Greta; ver `docs/google-ads-readonly-source.md`), no de la base. Alcanza para un análisis puntual con los compradores del canal pago de la base: canal pago **y click id** (`last_touch_gclid is not null` para last-touch; `first_touch_gclid` para first-touch). Con las reglas de revenue de arriba:
+
+- **CAC** = gasto ÷ compradores **nuevos** del período (usuarios distintos cuya primera compra pagada cae en el período; una recompra no suma, si no el CAC sale más bajo de lo que es).
+- **ROAS** = revenue de todas las compras del período ÷ gasto.
+- El gasto viene en `cost_micros` y en la moneda de la cuenta de Google Ads: no lo sumes con revenue de otra moneda sin un tipo de cambio declarado.
+
+**Lo que falta para tenerlo en SQL** (opcional): una tabla diaria de gasto en la base del producto, para joinear y tener historia sin depender de la API. Forma sugerida:
+
+```sql
+-- PROPUESTA: no existe hasta que la construyas. Que ningún agente la consulte antes.
+create table ads_spend (
+  date          date        not null,  -- día en la zona horaria de la cuenta de Google Ads
+  channel       text        not null,  -- mismo valor que la función que deriva el canal
+  account_id    text        not null,  -- customer ID sin guiones
+  campaign_id   text        not null,
+  campaign_name text        not null,
+  currency      text        not null,  -- lower(customer.currency_code)
+  spend_cents   bigint      not null,  -- round(cost_micros / 10000): centavos, como amount_cents
+  clicks        integer     not null,
+  impressions   integer     not null,
+  platform_conversions numeric,        -- lo que Google se atribuye; NO es la compra
+  synced_at     timestamptz not null default now(),
+  primary key (date, channel, campaign_id)
+);
+```
+
+La carga sería un job diario del producto que lee la API con la misma service account y hace upsert de los últimos 7 días en cada corrida (Google recalcula las conversiones recientes). Solo service role; sin lectura pública.
+
+_Otras métricas a documentar según tu negocio_: ARPU, tasa de recompra/renovación, tiempo a primera compra.
 
 ## Convenciones
 

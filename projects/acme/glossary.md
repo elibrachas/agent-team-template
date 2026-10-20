@@ -1,6 +1,6 @@
 # Glosario interno — Acme (EJEMPLO)
 
-> **Acme es un SaaS de ejemplo; reemplaza todo.** Definiciones canónicas del proyecto. Lo carga la skill `glossary` y todo agente que reporte métricas (Numa, Greta, Pico, Capi). Regla: **si una métrica o término no está acá, agrégalo antes de exponerlo en un output.** Cada definición tiene que decir de dónde sale el dato (tabla/evento en `data-model.md`).
+> **Acme es un SaaS de ejemplo; reemplaza todo.** Definiciones canónicas del proyecto. Lo carga la skill `glossary` y todo agente que reporte métricas (Numa, Greta, Pico, Capi). Regla: **si una métrica o término no está aquí, agrégalo antes de exponerlo en un output.** Cada definición tiene que decir de dónde sale el dato (tabla/evento en `data-model.md`).
 
 ## Productos y surfaces
 
@@ -22,6 +22,8 @@ _Guía_: numerador, denominador, ventana y filtros exactos.
 | _Activación_ | % de signups que envían su primer presupuesto dentro de 7 días | `events` (`quote_sent`) |
 | _Conversión free→paid_ | % de una cohorte de signup que paga al menos una vez (siempre con n) | `payments` |
 | _MRR_ | Suma de suscripciones activas normalizadas a mes, por moneda | `subscriptions` |
+| _CAC (canal pago)_ | Gasto del período ÷ compradores **nuevos** del período que llegaron por un anuncio (canal pago + click id). Una recompra no suma al denominador | Gasto: MCP de Google Ads; compradores: `payments` + `user_acquisition` (ver `data-model.md` → "CAC por canal") |
+| _ROAS_ | Revenue de todas las compras del período del canal ÷ gasto del período, en la misma moneda | Ídem |
 
 ## Canales de adquisición
 

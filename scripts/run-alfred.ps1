@@ -96,8 +96,10 @@ $env:GIT_COMMITTER_EMAIL = $env:GIT_AUTHOR_EMAIL
 
 # Cierre del loop: antes del barrido diario, actualiza la copia VIVA del repo de agentes (esta PC)
 # con lo que se haya mergeado (ej. un PR anterior de Alfred ya aprobado), para que el runtime tome
-# las mejoras. Best-effort + seguro: sync-agents-repo.ps1 hace FF-only y SOLO si está limpio (nunca
-# pisa WIP). Solo en el sweep (no en cada llamado directo, para no meter latencia). Si falla, sigo.
+# las mejoras. Best-effort + seguro: sync-agents-repo.ps1 hace FF-only aun con WIP (si un archivo
+# reescrito por un agente choca con un commit entrante, lo descarta con backup y reintenta; nunca
+# pisa el resto del WIP, y si no puede avanzar avisa en Linear). Solo en el sweep (no en cada
+# llamado directo, para no meter latencia). Si falla, sigo (el aviso de Linear ya lo deja el sync).
 if ($Job -eq 'sweep' -and -not $DryRun) {
   try { & "$PSScriptRoot\sync-agents-repo.ps1" -Quiet } catch { Write-Warning "sync-agents-repo (no bloqueante) falló: $($_.Exception.Message)" }
 }

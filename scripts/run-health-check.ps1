@@ -16,6 +16,9 @@
 #      dentro de su ventana (diario = hoy o ayer; semanal = últimos 8 días).            [full]
 #   5. Cola estancada: briefs de hace más de 7 días sin mover (informativo).            [full]
 #   6. audit\: hubo corridas con timed_out=true ayer/hoy (informativo).                 [full]
+#   7. Tick diario de Leda, contra la hora del último tick de cada proyecto: falta su brief
+#      (no corrió) o un post que vencía antes de ese tick sigue sin publicar (corrió y no
+#      lo publicó, ej. con un modelo que no ejecutaba PowerShell).                     [full]
 # Si hay problemas → crea UN issue [Alert] en el team Linear del proyecto de ops (-OpsProject;
 # vía GraphQL directo, label agent-report, estado Backlog, ASIGNADO al dueño de la LINEAR_API_KEY
 # para que le llegue el push) y sale con exit 1 (n8n rojo).
@@ -52,6 +55,18 @@ $ExpectedCrons = @(
   @{ Name = 'funnel-monitor';         Project = 'acme'; CadenceDays = 1 },
   @{ Name = 'pm-weekly-digest';       Project = 'acme'; CadenceDays = 8 }
 )
+
+# --- Ticks de Leda activos en n8n (content-blog-publish-tick, una vez por día) ---
+# TickHour = hora local del server a la que corre el tick vivo de cada proyecto. El check 7
+# compara contra el ÚLTIMO tick: el de hoy si ya pasó (más $TickGraceMin para que termine), si no
+# el de ayer. Cada proyecto tiene su hora porque su publisher también: si la nota vence después
+# del tick, sale con el tick del día siguiente; si vence antes, sale ese mismo día.
+# Suma el proyecto cuando actives el tick de otro.
+# TODO(acme): deja aquí solo los proyectos cuyo tick de Leda programaste en n8n, con su hora real.
+$TickProjects = @(
+  @{ Slug = 'acme'; TickHour = 8 }
+)
+$TickGraceMin = 30
 
 $problems = @()
 $infos = @()
@@ -153,6 +168,59 @@ if (-not $AuthOnly) {
     if (Test-Path $auditFile) {
       $timeouts = @(Get-Content $auditFile | Where-Object { $_ -match '"timed_out":\s*true' })
       if ($timeouts.Count -gt 0) { $infos += "$($timeouts.Count) corridas con TIMEOUT en $d (ver $auditFile)" }
+    }
+  }
+
+  # 7. Tick diario de Leda, contra el ÚLTIMO tick de cada proyecto (hoy a su TickHour si ya pasó,
+  #    con $TickGraceMin para que termine; si no, el de ayer):
+  #    7a. su brief de ese día en queue\pending-review\. Si falta, el tick no corrió (o falló
+  #        antes de escribirlo).
+  #    7b. los posts programados que vencían antes de ese tick y siguen sin publicar: el tick
+  #        corrió y no los publicó. 7a no alcanza: el wrapper escribe el brief aunque el agente
+  #        falle. Si el helper no responde, 7b queda como info y no como problema.
+  $nowLocal = Get-Date
+  foreach ($tick in $TickProjects) {
+    $slug = $tick.Slug
+    $lastTick = $nowLocal.Date.AddHours($tick.TickHour)
+    if ($nowLocal -lt $lastTick.AddMinutes($TickGraceMin)) { $lastTick = $lastTick.AddDays(-1) }
+    $tickLabel = $lastTick.ToString('yyyy-MM-dd HH:mm')
+
+    $briefFile = "queue\pending-review\$($lastTick.ToString('yyyy-MM-dd'))-$slug-content-blog-publish-tick.md"
+    if (-not (Test-Path $briefFile)) {
+      $problems += "${slug}: el tick diario de Leda del $tickLabel (hora del server) no dejó brief ($briefFile): no corrió o falló antes de escribirlo. Mira las Executions de su workflow en n8n (docs/server-setup.md, sección del tick de Leda)."
+    }
+
+    $raw = $null; $code = 1
+    # Con "Stop", PS 5.1 corta el script si el helper escribe algo en stderr (lo envuelve como error).
+    $prevEap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    try {
+      $raw = & powershell -ExecutionPolicy Bypass -NoProfile -File "$PSScriptRoot\leda-helpers.ps1" -Action list-scheduled-due -Project $slug 2>$null
+      $code = $LASTEXITCODE
+    } catch { $raw = $null } finally { $ErrorActionPreference = $prevEap }
+    $lines = @($raw | ForEach-Object { [string]$_ })
+    $first = -1
+    for ($k = 0; $k -lt $lines.Count; $k++) { if ($lines[$k].TrimStart().StartsWith('[')) { $first = $k; break } }
+    # Mismo parseo que el pre-check de run-skill.ps1: ForEach-Object enumera el array en PS 5.1 y 7.
+    $duePosts = @(); $parsed = $false
+    if ($code -eq 0 -and $first -ge 0) {
+      try {
+        $duePosts = @(ConvertFrom-Json -InputObject ($lines[$first..($lines.Count - 1)] -join "`n") | ForEach-Object { $_ })
+        $parsed = $true
+      } catch { $parsed = $false }
+    }
+    if (-not $parsed) { $infos += "${slug}: no pude listar los posts programados vencidos (leda-helpers exit $code), check 7b salteado"; continue }
+    foreach ($post in $duePosts) {
+      # ledaPublishAt o agentPublishAt según el prefijo de campos del proyecto (el helper usa el del proyecto).
+      $prop = $post.PSObject.Properties | Where-Object { $_.Name -like '*PublishAt' } | Select-Object -First 1
+      if (-not $prop -or -not $prop.Value) { continue }
+      $dueLocal = $null
+      try {
+        $dueLocal = if ($prop.Value -is [datetime]) { $prop.Value.ToLocalTime() }
+                    else { ([DateTimeOffset]::Parse([string]$prop.Value, [Globalization.CultureInfo]::InvariantCulture)).LocalDateTime }
+      } catch { continue }
+      if ($dueLocal -lt $lastTick) {
+        $problems += "${slug}: el post $($post.id) «$($post.title)» vencía el $($dueLocal.ToString('yyyy-MM-dd HH:mm')) y el tick del $tickLabel (hora del server) no lo publicó: sigue programado. Si ese tick tampoco dejó brief, no corrió; si no, mira el stdout de esa ejecución en n8n (docs/server-setup.md, sección del tick de Leda)."
+      }
     }
   }
 }

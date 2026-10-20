@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="lead-token" content="__LEAD_TOKEN__" />
+    <title>Hoja del día</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <!-- Dos pedidos separados: si una familia fallara, la otra igual carga. Sin red, cae a las del sistema. -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&display=swap" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600;700&display=swap" />
+    <link rel="stylesheet" href="/app.css" />
+  </head>
+  <body>
+    <a class="skip" href="#main">Ir al contenido</a>
+
+    <header class="masthead">
+      <div class="masthead-title">
+        <h1>Hoja del día</h1>
+        <p id="today"></p>
+      </div>
+      <div class="masthead-data">
+        <p id="freshness"></p>
+        <button type="button" class="btn quiet" id="refresh">Actualizar datos</button>
+      </div>
+    </header>
+
+    <div id="notices"></div>
+
+    <nav class="tabs" aria-label="Secciones">
+      <div role="tablist" id="tablist"></div>
+    </nav>
+
+    <main id="main" tabindex="-1"></main>
+
+    <div id="toast" role="status" aria-live="polite"></div>
+
+    <noscript>El tablero necesita JavaScript.</noscript>
+    <script src="/app.js" defer></script>
+  </body>
+</html>

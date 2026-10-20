@@ -2,7 +2,7 @@
 
 Plugin de Growth del equipo de agentes: SEO, AEO (aparecer en respuestas de asistentes de IA), monitoreo del funnel y conversión. Las skills son **genéricas**: todo lo que depende del producto (tablas, etapas del funnel, canales, URLs, tono) lo leen del contexto del proyecto activo en `projects/<slug>/`.
 
-El foco de cada proyecto (qué segmento, qué canal, qué queda fuera de scope) se declara en `project.json → strategicFocus` y en los `agent-overrides/` — no acá.
+El foco de cada proyecto (qué segmento, qué canal, qué queda fuera de scope) se declara en `project.json → strategicFocus` y en los `agent-overrides/` — no aquí.
 
 ## Skills incluidas
 
@@ -19,13 +19,13 @@ Ideas de skills para sumar según tu proyecto (no incluidas): `ads-daily-brief`,
 
 | Archivo | Quién lo usa | Servers |
 |---------|--------------|---------|
-| `.mcp.json` | Default de los agentes (`project.json → mcpConfig`) | supabase (read-only), linear, ga4, cwv, stripe |
+| `.mcp.json` | Default de los agentes (`project.json → mcpConfig`) | supabase (read-only), linear, ga4, cwv, stripe, vercel (read-only, `scripts/mcp-vercel/`), google-ads (read-only, MCP oficial). En `_pending_no_correr`: mysql (read-only, `scripts/mcp-mysql/`) para productos con base MySQL |
 | `seo.mcp.json` | `scripts/run-greta-seo.ps1` | supabase, linear, ga4, cwv, gsc |
 | `aeo.mcp.json` | `scripts/run-greta-aeo.ps1` | supabase, linear, ga4 (+ WebSearch built-in) |
-| `qa.mcp.json` | Qualy 🧪 (`mcpVariants.qa`) | linear, supabase, playwright |
+| `qa.mcp.json` | Qualy 🧪 (`mcpVariants.qa`) | linear, supabase, playwright, vercel (read-only) |
 | `design.mcp.json` | Daly (`mcpVariants.design`) | linear, supabase, playwright |
 
-Todos usan solo `${ENV_VAR}`; los valores viven en `.env.server` + `.env.<slug>`. Un proyecto puede apuntar a sus propias variantes vía `project.json → mcpVariants`.
+Todos usan solo `${ENV_VAR}` (con `${ENV_VAR:-}` donde el server sabe degradar a "fuente no configurada"); los valores viven en `.env.server` + `.env.<slug>`. Un proyecto puede apuntar a sus propias variantes vía `project.json → mcpVariants`. Los wrappers propios en Node (`scripts/mcp-*`) piden `npm ci` en su carpeta una vez por máquina, y los que leen datos de producción son **read-only por diseño** (solo GET o una sola sentencia de lectura, salida redactada): el agente nunca recibe un token con el que pueda escribir.
 
 ## Dependencias
 
@@ -52,4 +52,4 @@ cost_budget_usd: <máximo por ejecución>
 
 ## Coexistencia con automatizaciones existentes
 
-Si ya tienes workflows (p. ej. en n8n) que generan contenido o reportes, documenta en el README de tu proyecto qué hace cada uno y diseña las skills para **coexistir** con ellos, no duplicarlos (p. ej. un workflow genera drafts de blog y el agente solo los mejora y publica).
+Si ya tienes workflows (p. ej. en n8n) que generan contenido o reportes, documenta en el README de tu proyecto qué hace cada uno y diseña las skills para **coexistir** con ellos, no duplicarlos. Si un workflow existente hace mal un trabajo que un agente puede hacer con más contexto, reemplázalo explícitamente y apágalo (p. ej. un generador de drafts de blog que no mira lo publicado → el banco de ideas de Leda: `content-topic-scan` + `content-blog-publisher`).

@@ -1,0 +1,79 @@
+{
+  "_uso_": "Sync de las copias locales de los REPOS DEL PRODUCTO (project.json → productRepos, o productRepoPath si es uno solo) que leen Numa, Greta, Pico y Cody. Diario 02:00, ANTES de los crons de análisis (Greta SEO lun 04:00, Pico lun 05:00, Cody lun 06:00). Por qué: los agentes leen el código para entender cómo se genera un dato y para auditar el frontend; con copias semanas atrás del main remoto, analizan código que ya no existe. Corre scripts/sync-product-repos.ps1 -Project acme -Quiet: `git fetch` siempre; vuelve a la rama default un repo que quedó en una rama ya pusheada y mergeada (típico: la cody/* de un PR), solo si está limpia; fast-forward SOLO en la rama default y sin cambios trackeados. Nunca pisa trabajo ni fuerza nada: si no es fast-forward, avisa y sigue con el próximo repo. NO llama a claude → costo cero. Requisito: los repos clonados en las rutas de project.json y GH_TOKEN en .env.server con acceso a ellos. Importa inactivo → Execute Workflow → activa.",
+  "name": "acme · sync-product-repos (diario 02:00)",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Argentina/Buenos_Aires"
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 2 * * *"
+            }
+          ]
+        }
+      },
+      "id": "trigger-sync-product-repos",
+      "name": "Cron",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        260,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "command": "powershell -ExecutionPolicy Bypass -NoProfile -File \"C:\\agents\\agent-team-template\\scripts\\sync-product-repos.ps1\" -Project acme -Quiet"
+      },
+      "id": "exec-sync-product-repos",
+      "name": "Sync repos del producto (ff-only)",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        500,
+        300
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "log-sync-product-repos",
+      "name": "Resultado (stdout)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        740,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Cron": {
+      "main": [
+        [
+          {
+            "node": "Sync repos del producto (ff-only)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sync repos del producto (ff-only)": {
+      "main": [
+        [
+          {
+            "node": "Resultado (stdout)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

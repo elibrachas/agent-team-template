@@ -1,0 +1,79 @@
+{
+  "_uso_": "Scan SEMANAL de temas de Leda 📖: llena el banco de ideas (collection `topics` del CMS) que consume el cron diario `content-blog-publisher`. Reemplaza a un generador upstream de drafts (p. ej. un 'post producer' de n8n) que elegía temas sin mirar lo publicado: si tienes uno, DESACTÍVALO al activar este. Importa a n8n (ver README.md), corre Execute Workflow una vez y actívalo. Cron '30 10 * * 1' = lunes 10:30: después de la review SEO de Greta (04:00, deja Search Console en seo-memory.md) y de los scans de los lunes (Pico 05:00, Cody 06:00), antes del [Plan] de Capi (11:00). run-skill.ps1 -Skill content-topic-scan -Project acme corre la skill DEL PROYECTO (projects/acme/skills/content-topic-scan/SKILL.md): HITL-3, propone hasta 8 ideas por semana (nuevas y `refresh:` de notas publicadas) con evidencia de demanda, deduplicadas contra lo publicado, lo que está en curso y el banco, las carga con scripts/seed-topics.ps1 y deja el registro en UN issue [Topics] en Linear; solo las decisiones reales (fusionar notas, una categoría nueva) esperan al owner. La skill declara en su frontmatter `mcp_variant: seo` (suma Search Console) y `extra_allowed_tools`. Modelo: el de Leda en agents.ps1 (no pases -Model). REQUIERE la collection `topics` en el CMS y el bloque `payload.topics` en project.json.",
+  "name": "acme · leda-topic-scan (lunes 10:30)",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Argentina/Buenos_Aires"
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "30 10 * * 1"
+            }
+          ]
+        }
+      },
+      "id": "trigger-leda-topic-scan",
+      "name": "Cron semanal (lunes 10:30)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        260,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "command": "powershell -ExecutionPolicy Bypass -NoProfile -File \"C:\\agents\\agent-team-template\\scripts\\run-skill.ps1\" -Skill content-topic-scan -Project acme"
+      },
+      "id": "exec-leda-topic-scan",
+      "name": "Run content-topic-scan",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        500,
+        300
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "log-leda-topic-scan",
+      "name": "Brief + costo (stdout)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        740,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Cron semanal (lunes 10:30)": {
+      "main": [
+        [
+          {
+            "node": "Run content-topic-scan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run content-topic-scan": {
+      "main": [
+        [
+          {
+            "node": "Brief + costo (stdout)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

@@ -86,7 +86,7 @@ GROUP BY 1, 2 ORDER BY 1 DESC, signups DESC;
 ## Caveats obligatorios (declararlos en el output)
 
 1. **Atribución forward-only.** Si el canal se empezó a capturar tarde, el histórico será mayormente `unknown`. El corte por canal solo es confiable para signups **posteriores al deploy** de la captura. Para histórico, cruza con GA4 / la plataforma de ads — dilo, no rellenes.
-2. **Canal pago sin atribuir.** Si el reporte muestra un canal pago ≈ 0, puede ser un bug de captura en las landings, NO que el canal no convierta. Flaggea, no concluyas.
+2. **Canal pago ≈ 0.** Antes de atribuirlo a un bug de captura en las landings, verifica contra prod si la captura del click-id funciona (cuántas filas de atribución recientes lo traen). Si no lo trae ninguna, es probable el bug: flaggea, no concluyas. Si la captura funciona, un canal pago ≈ 0 es una señal real para revisar (campañas pausadas, o la captura que se rompió). Un caveat de "todavía no se atribuye" envejece: re-verifícalo, no lo arrastres. Ojo: el canal de una plataforma de ads también puede salir de un `utm_source` sin click-id; para paid estricto, filtra por el click-id (p. ej. `gclid`).
 3. **Comps en $0.** No los sumes a revenue. Por default sí cuentan como "conversión" (el usuario activó algo), pero si la cifra de conversión se ve inflada, reporta ambas (con y sin comps).
 4. **Volumen chico.** Con pocas compras, las tasas por canal/cohorte tienen ruido alto → reporta el `n`, no solo el `%`, y no alarmes por swings de pocos casos.
 

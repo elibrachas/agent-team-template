@@ -1,0 +1,16 @@
+{
+  "name": "agent-team-mcp-vercel",
+  "version": "0.1.0",
+  "description": "MCP server Vercel READ-ONLY (solo GET, pin de proyectos, salida redactada): deploys, build logs y logs de runtime — usado por Qualy, Cody, Numa, Greta y Pico",
+  "private": true,
+  "type": "module",
+  "main": "index.mjs",
+  "bin": "index.mjs",
+  "scripts": {
+    "test": "node guard.test.mjs && node budget.test.mjs",
+    "smoke": "node smoke-test.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.18.0"
+  }
+}

@@ -25,6 +25,13 @@
 # `Authorization: Bearer <key>`. El mismo valor de PAYLOAD_API_KEY tiene que estar seteado
 # en el producto (hosting) y aquí. TODO(acme): ajusta a como autentique tu CMS.
 #
+# Contrato de campos por proyecto: el default es `leda*` (ledaStatus/ledaPublishAt/
+# ledaProcessedAt/ledaImageStyle; estado final published_by_leda). Un proyecto puede usar una
+# versión NEUTRAL `agent*` (agentStatus/agentPublishAt/agentProcessedAt; estado final
+# published_by_agent), no tener campo de estilo de imagen o no tener collection `topics`. El
+# mapping se lee de projects\<slug>\project.json → bloque opcional `payload` (ver $script:F más
+# abajo); sin bloque = contrato leda* de siempre.
+#
 # Output: SIEMPRE JSON a stdout (success o error envuelto), para que la skill
 # lo parsee desde el output del Bash tool. Exit code != 0 cuando hay error real.
 
@@ -33,14 +40,16 @@ param(
   [ValidateSet(
     'list-drafts','list-published','get-post','create-post','update-post',
     'upload-media','generate-image','find-related','validate-link',
-    'mark-scheduled','mark-needs-rework','publish-now','cancel-schedule',
-    'list-scheduled-due','find-recent-styles',
-    'list-topics','claim-topic','deliver-topic'
+    'mark-scheduled','mark-needs-rework','publish-now','publish-refresh','cancel-schedule',
+    'list-scheduled-due','find-recent-styles','list-in-flight',
+    'list-topics','claim-topic','deliver-topic','create-topic',
+    'list-guides'
   )]
   [string]$Action,
   [string]$Project = 'acme',      # slug del proyecto: carga .env.<slug> encima de .env.server
   [string]$PostId,
   [string]$TopicId,             # id de la collection topics (solo proyectos con banco de ideas)
+  [string]$Status,              # list-topics: idea (default, lo que toma el publisher) | assigned | drafted | published | all
   [string]$Notes,               # deliver-topic: nota de entrega (ej. "post id 12")
   [string]$Locale,              # en|es — appendea ?locale=<l> a get/create/update-post (Payload localizado)
   [switch]$Draft,               # appendea draft=true al query string de create/update-post
@@ -51,6 +60,7 @@ param(
   [string]$Prompt,
   [string]$PromptFile,        # Path a archivo .txt con el prompt — alternativa a -Prompt para prompts largos/multiline
   [string]$OutFile,
+  [string]$AspectRatio,         # generate-image: p. ej. "16:9" (generationConfig.imageConfig.aspectRatio). Vacío = lo que decida el modelo, como siempre
   [string]$Url,
   [string]$Tags,                # comma-separated
   [string]$Category,
@@ -105,6 +115,55 @@ if (-not $env:PAYLOAD_BASE_URL) {
   exit 1
 }
 
+# === Contrato de campos del pipeline según el proyecto ===
+# Default = contrato leda*. Un proyecto puede overridearlo en projects\<slug>\project.json con un
+# bloque opcional:
+#   "payload": {
+#     "agentFieldPrefix": "agent",                  → agentStatus / agentPublishAt / agentProcessedAt
+#     "publishedByAgentValue": "published_by_agent", → valor final de <prefix>Status al publicar
+#     "imageStyleField": null | "agentImageStyle",  → null = el Payload NO tiene el campo (find-recent-styles devuelve [])
+#     "topics": false                               → false = NO existe la collection `topics` (list/claim/deliver/create-topic fallan claro)
+#     "guides": true                                → true = Posts tiene `isPillar` / `pillar` (guías y satélites)
+#   }
+$script:F = [ordered]@{
+  Status      = 'ledaStatus'
+  PublishAt   = 'ledaPublishAt'
+  ProcessedAt = 'ledaProcessedAt'
+  ImageStyle  = 'ledaImageStyle'
+  PublishedBy = 'published_by_leda'
+  HasTopics   = $true
+  HasGuides   = $false
+}
+$projJsonPath = ".\projects\$Project\project.json"
+if (Test-Path $projJsonPath) {
+  # -Encoding UTF8 OBLIGATORIO: PS 5.1 lee ANSI por default y los project.json no tienen BOM.
+  $projCfg = Get-Content $projJsonPath -Raw -Encoding UTF8 | ConvertFrom-Json
+  $pl = $projCfg.payload
+  if ($pl) {
+    if ($pl.agentFieldPrefix) {
+      $pfx = [string]$pl.agentFieldPrefix
+      $script:F.Status      = "${pfx}Status"
+      $script:F.PublishAt   = "${pfx}PublishAt"
+      $script:F.ProcessedAt = "${pfx}ProcessedAt"
+      $script:F.ImageStyle  = "${pfx}ImageStyle"
+    }
+    if ($pl.publishedByAgentValue) { $script:F.PublishedBy = [string]$pl.publishedByAgentValue }
+    if ($pl.PSObject.Properties['imageStyleField']) {
+      $script:F.ImageStyle = if ($pl.imageStyleField) { [string]$pl.imageStyleField } else { $null }
+    }
+    if ($pl.PSObject.Properties['topics']) { $script:F.HasTopics = [bool]$pl.topics }
+    if ($pl.PSObject.Properties['guides']) { $script:F.HasGuides = [bool]$pl.guides }
+  }
+}
+
+# `pillar` llega como id (depth=0) o como el post entero (la REST de Payload usa depth=2
+# por default): siempre devolvemos el id.
+function Get-PillarId($pillar) {
+  if ($null -eq $pillar -or $pillar -eq '') { return $null }
+  if ($pillar -is [System.Management.Automation.PSCustomObject]) { return $pillar.id }
+  return $pillar
+}
+
 # Query string común para get/create/update-post en Payloads localizados
 $script:PostQS = ""
 if ($Locale) { $script:PostQS = "?locale=$Locale" }
@@ -113,6 +172,13 @@ if ($Draft)  { $script:PostQS = if ($script:PostQS) { "$script:PostQS&draft=true
 function Require-Env([string]$name) {
   if (-not (Get-Item "Env:$name" -ErrorAction SilentlyContinue)) {
     Write-Error "Env var $name requerida pero no está en el environment. Agrégala a .env.server."
+    exit 1
+  }
+}
+
+function Require-Topics {
+  if (-not $script:F.HasTopics) {
+    Write-Error "El Payload de '$Project' NO tiene la collection 'topics' (project.json → payload.topics = false). Esto NO es 'banco vacío': el banco de ideas todavía no existe en el producto."
     exit 1
   }
 }
@@ -203,6 +269,67 @@ function Invoke-PayloadPost([string]$Path, [hashtable]$Body) {
   }
 }
 
+# === Normalización del AST Lexical ===
+# El editor del admin de Payload (Lexical) exige en cada nodo las props que el propio editor
+# serializa: elementos (paragraph/heading/list/listitem/link/quote) con format:"" + indent:0 +
+# direction:"ltr" + version:1; text con format:0 + detail:0 + mode:"normal" + style:"" + version:1;
+# list con listType/tag/start; listitem con value. Si faltan, el front público renderiza igual pero
+# el ADMIN rompe al abrir el post ("Minified Lexical error #117").
+# Leda escribe los nodos a mano y a veces los omite → el helper rellena los defaults ANTES de mandar.
+function Ensure-Prop([object]$Node, [string]$Name, [object]$Value) {
+  if (-not $Node.PSObject.Properties[$Name]) { $Node | Add-Member -NotePropertyName $Name -NotePropertyValue $Value }
+}
+function Normalize-LexicalNode([object]$Node, [int]$Index = 0) {
+  if ($null -eq $Node -or -not ($Node -is [System.Management.Automation.PSCustomObject])) { return }
+  $t = [string]$Node.type
+  # Bloques de Payload (BlocksFeature, p. ej. un CodeBlock): nodos decorator sin children ni
+  # indent/direction. Un `block` es version 2: con version 1, Payload lo lee como el formato viejo
+  # (fields.data) y deja los fields vacíos (un bloque de código sin código). Un `inlineBlock` es
+  # version 1 y no lleva format (Payload 3.90). Solo se completa eso.
+  if ($t -eq 'block') {
+    Ensure-Prop $Node 'format' ''
+    Ensure-Prop $Node 'version' 2
+    return
+  }
+  if ($t -eq 'inlineBlock') {
+    Ensure-Prop $Node 'version' 1
+    return
+  }
+  if ($t -eq 'text') {
+    Ensure-Prop $Node 'format' 0
+    Ensure-Prop $Node 'detail' 0
+    Ensure-Prop $Node 'mode' 'normal'
+    Ensure-Prop $Node 'style' ''
+    Ensure-Prop $Node 'version' 1
+  } elseif ($t) {
+    Ensure-Prop $Node 'format' ''
+    Ensure-Prop $Node 'indent' 0
+    Ensure-Prop $Node 'direction' 'ltr'
+    Ensure-Prop $Node 'version' 1
+    if ($t -eq 'list') {
+      if (-not $Node.PSObject.Properties['listType']) { Ensure-Prop $Node 'listType' $(if ($Node.tag -eq 'ol') { 'number' } else { 'bullet' }) }
+      if (-not $Node.PSObject.Properties['tag'])      { Ensure-Prop $Node 'tag' $(if ($Node.listType -eq 'number') { 'ol' } else { 'ul' }) }
+      Ensure-Prop $Node 'start' 1
+    }
+    if ($t -eq 'listitem') { Ensure-Prop $Node 'value' ($Index + 1) }
+    if ($t -eq 'heading')  { Ensure-Prop $Node 'tag' 'h2' }
+    if ($t -eq 'link') {
+      if (-not $Node.PSObject.Properties['fields']) { Ensure-Prop $Node 'fields' ([pscustomobject]@{ linkType = 'custom'; newTab = $false; url = '' }) }
+      Ensure-Prop $Node.fields 'linkType' 'custom'
+      Ensure-Prop $Node.fields 'newTab' $false
+    }
+  }
+  if ($Node.PSObject.Properties['children'] -and $Node.children) {
+    $i = 0
+    foreach ($c in @($Node.children)) { Normalize-LexicalNode $c $i; $i++ }
+  }
+}
+function Normalize-LexicalContent([hashtable]$Body) {
+  if ($Body.ContainsKey('content') -and $Body['content'] -and $Body['content'].PSObject.Properties['root'] -and $Body['content'].root) {
+    Normalize-LexicalNode $Body['content'].root 0
+  }
+}
+
 # BodyJson/BodyJsonFile → hashtable, con el guard de encoding U+FFFD (HARD)
 function Read-BodyJson {
   if ($BodyJsonFile) { $script:BodyJson = [System.IO.File]::ReadAllText($BodyJsonFile, [System.Text.Encoding]::UTF8) }
@@ -230,7 +357,7 @@ switch ($Action) {
   'list-drafts' {
     # Drafts eligibles: _status=draft AND no procesados aún por Leda.
     # Opcional: excluir drafts por tag (p. ej. contenido de un segmento que Leda no debe tocar).
-    $query = "/posts?where[_status][equals]=draft&where[ledaProcessedAt][exists]=false&sort=createdAt&limit=$Limit"
+    $query = "/posts?where[_status][equals]=draft&where[$($script:F.ProcessedAt)][exists]=false&sort=createdAt&limit=$Limit"
     $resp = Invoke-PayloadGet $query
     $excluded = @()   # TODO(acme): tags (en minúscula) a excluir, ej. @('internal','b2b')
     $eligible = $resp.docs | Where-Object {
@@ -254,14 +381,46 @@ switch ($Action) {
     $query = "/posts?where[_status][equals]=published&limit=$Limit&sort=-publishedAt"
     $resp = Invoke-PayloadGet $query
     $__r = @($resp.docs | ForEach-Object {
+      $o = [ordered]@{
+        id       = $_.id
+        title    = $_.title
+        slug     = $_.slug
+        category = $_.category
+        tags     = $_.tags
+      }
+      # La key sale con el nombre REAL del campo del proyecto (ledaImageStyle / agentImageStyle);
+      # si el proyecto no tiene el campo, se omite.
+      if ($script:F.ImageStyle) { $o[$script:F.ImageStyle] = $_.($script:F.ImageStyle) }
+      # Guías y satélites (payload.guides = true): si la nota es una guía y de qué guía es parte.
+      if ($script:F.HasGuides) {
+        $o['isPillar'] = [bool]$_.isPillar
+        $o['pillar']   = Get-PillarId $_.pillar
+      }
+      $o['publishedAt'] = $_.publishedAt
+      [pscustomobject]$o
+    })
+    ConvertTo-Json -InputObject $__r -Depth 5
+  }
+
+  'list-guides' {
+    # Las guías publicadas (isPillar) y sus satélites publicados. Para elegir el `pillar` de una
+    # nota nueva (por id, nunca hardcodeado) y para ver qué guía está flaca (pocas notas).
+    if (-not $script:F.HasGuides) {
+      Write-Error "El Payload de '$Project' NO tiene guías (project.json → payload.guides no es true)."
+      exit 1
+    }
+    $guides = Invoke-PayloadGet "/posts?where[_status][equals]=published&where[isPillar][equals]=true&limit=50&depth=0&sort=title"
+    $sats   = Invoke-PayloadGet "/posts?where[_status][equals]=published&where[pillar][exists]=true&limit=500&depth=0"
+    $__r = @($guides.docs | ForEach-Object {
+      $gid = $_.id
+      $own = @($sats.docs | Where-Object { (Get-PillarId $_.pillar) -eq $gid } | ForEach-Object { $_.slug })
       [pscustomobject]@{
-        id               = $_.id
-        title            = $_.title
-        slug             = $_.slug
-        category         = $_.category
-        tags             = $_.tags
-        ledaImageStyle = $_.ledaImageStyle
-        publishedAt      = $_.publishedAt
+        id         = $gid
+        title      = $_.title
+        slug       = $_.slug
+        category   = $_.category
+        satellites = $own.Count
+        slugs      = $own
       }
     })
     ConvertTo-Json -InputObject $__r -Depth 5
@@ -276,12 +435,14 @@ switch ($Action) {
     # POST /posts — crea un draft nuevo (p. ej. Leda redacta desde cero a partir del banco
     # de topics; usar -Locale en Payloads localizados y -Draft para que nazca como draft).
     $body = Read-BodyJson
+    Normalize-LexicalContent $body   # rellena props Lexical faltantes (sin esto el admin rompe al abrir el post)
     Invoke-PayloadPost "/posts$script:PostQS" $body | ConvertTo-Json -Depth 20
   }
 
   'update-post' {
     if (-not $PostId) { Write-Error "PostId requerido"; exit 1 }
     $body = Read-BodyJson
+    Normalize-LexicalContent $body   # idem create-post
     Invoke-PayloadPatch "/posts/$PostId$script:PostQS" $body | ConvertTo-Json -Depth 20
   }
 
@@ -342,9 +503,13 @@ switch ($Action) {
       'x-goog-api-key' = $env:GEMINI_API_KEY
       'Content-Type'   = 'application/json'
     }
+    $genConfig = @{ responseModalities = @("IMAGE") }
+    # Opcional: con aspectRatio el modelo respeta la proporción (p. ej. 16:9 → 1376x768). Sin el
+    # parámetro, nada cambia.
+    if ($AspectRatio) { $genConfig['imageConfig'] = @{ aspectRatio = $AspectRatio } }
     $body = @{
       contents         = @(@{ parts = @(@{ text = $Prompt }) })
-      generationConfig = @{ responseModalities = @("IMAGE") }
+      generationConfig = $genConfig
     } | ConvertTo-Json -Depth 10 -Compress
 
     try {
@@ -424,71 +589,126 @@ switch ($Action) {
     if (-not $PostId) { Write-Error "PostId requerido"; exit 1 }
     $publishAt = (Get-Date).ToUniversalTime().AddHours($WindowHours).ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
     $now = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
-    $body = @{
-      ledaStatus       = 'scheduled'
-      ledaPublishAt   = $publishAt
-      ledaProcessedAt = $now
-    }
+    $body = @{}
+    $body[$script:F.Status]      = 'scheduled'
+    $body[$script:F.PublishAt]   = $publishAt
+    $body[$script:F.ProcessedAt] = $now
     Invoke-PayloadPatch "/posts/$PostId" $body | ConvertTo-Json -Depth 5
   }
 
   'mark-needs-rework' {
     if (-not $PostId) { Write-Error "PostId requerido"; exit 1 }
     $now = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
-    $body = @{
-      ledaStatus       = 'needs_rework'
-      ledaProcessedAt = $now
+    $body = @{}
+    $body[$script:F.Status]      = 'needs_rework'
+    $body[$script:F.ProcessedAt] = $now
+    # Publicada con un borrador pendiente (refresh sin publicar): sin draft=true, Payload arma el
+    # update sobre ese borrador y la nota publicada pasa a borrador (404). Ahí se marca solo el borrador.
+    $qs = ''
+    $main = Invoke-PayloadGet "/posts/${PostId}?depth=0"
+    if ($main._status -eq 'published') {
+      $latest = Invoke-PayloadGet "/posts/${PostId}?depth=0&draft=true"
+      if ($latest._status -eq 'draft') { $qs = '?draft=true' }
     }
-    Invoke-PayloadPatch "/posts/$PostId" $body | ConvertTo-Json -Depth 5
+    Invoke-PayloadPatch "/posts/$PostId$qs" $body | ConvertTo-Json -Depth 5
   }
 
   'publish-now' {
     if (-not $PostId) { Write-Error "PostId requerido"; exit 1 }
-    $body = @{
-      _status     = 'published'
-      ledaStatus = 'published_by_leda'
+    $body = @{ _status = 'published' }
+    $body[$script:F.Status] = $script:F.PublishedBy
+    Invoke-PayloadPatch "/posts/$PostId" $body | ConvertTo-Json -Depth 5
+  }
+
+  'publish-refresh' {
+    # Publica el borrador de refresh de una nota que YA está publicada (los refresh salen en la
+    # misma corrida del publisher, sin esperar aprobación). Dos guardas para que no sirva de atajo
+    # a la ventana de 6h de las notas nuevas, que van por mark-scheduled + tick: la fila principal
+    # tiene que estar publicada y la última versión tiene que ser un borrador. El PATCH va sin
+    # draft=true y con _status=published: Payload arma el update sobre la última versión (el
+    # borrador) y la deja publicada.
+    if (-not $PostId) { Write-Error "PostId requerido"; exit 1 }
+    $main = Invoke-PayloadGet "/posts/${PostId}?depth=0"
+    if ($main._status -ne 'published') {
+      Write-Error "publish-refresh es solo para notas ya publicadas: el post $PostId está en '$($main._status)'. Una nota nueva sale por mark-scheduled y el tick."
+      exit 1
     }
+    $latest = Invoke-PayloadGet "/posts/${PostId}?depth=0&draft=true"
+    if ($latest._status -ne 'draft') {
+      Write-Error "El post $PostId no tiene un borrador pendiente: no hay refresh que publicar."
+      exit 1
+    }
+    $body = @{ _status = 'published' }
+    $body[$script:F.Status]      = $script:F.PublishedBy
+    $body[$script:F.ProcessedAt] = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
     Invoke-PayloadPatch "/posts/$PostId" $body | ConvertTo-Json -Depth 5
   }
 
   'cancel-schedule' {
     if (-not $PostId) { Write-Error "PostId requerido"; exit 1 }
-    $body = @{
-      ledaStatus     = 'cancelled'
-      ledaPublishAt = $null
-    }
+    $body = @{}
+    $body[$script:F.Status]    = 'cancelled'
+    $body[$script:F.PublishAt] = $null
     Invoke-PayloadPatch "/posts/$PostId" $body | ConvertTo-Json -Depth 5
   }
 
-  'list-scheduled-due' {
-    # Posts con ledaStatus=scheduled cuya ledaPublishAt ya pasó. Usado por el tick.
-    $nowIso = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
-    $query = "/posts?where[ledaStatus][equals]=scheduled&where[ledaPublishAt][less_than]=$nowIso&limit=$Limit"
+  'list-in-flight' {
+    # Notas que todavía no están publicadas: borradores y programadas, procesadas o no (list-drafts
+    # deja afuera las procesadas). Para deduplicar temas contra lo que ya se está escribiendo.
+    $query = "/posts?where[_status][equals]=draft&sort=-createdAt&limit=$Limit"
     $resp = Invoke-PayloadGet $query
     $__r = @($resp.docs | ForEach-Object {
       [pscustomobject]@{
-        id              = $_.id
-        title           = $_.title
-        slug            = $_.slug
-        ledaPublishAt = $_.ledaPublishAt
+        id          = $_.id
+        title       = $_.title
+        slug        = $_.slug
+        category    = $_.category
+        agentStatus = $_.($script:F.Status)
+        publishAt   = $_.($script:F.PublishAt)
       }
     })
     ConvertTo-Json -InputObject $__r -Depth 5
   }
 
-  'find-recent-styles' {
-    # Últimos N posts publicados con ledaImageStyle seteado (para anti-repetición).
-    # N default = 3 (controlado por -Limit).
-    if (-not $Limit) { $Limit = 3 }
-    $query = "/posts?where[_status][equals]=published&where[ledaImageStyle][exists]=true&sort=-publishedAt&limit=$Limit"
+  'list-scheduled-due' {
+    # Posts con <prefix>Status=scheduled cuya <prefix>PublishAt ya pasó. Usado por el tick (y por su
+    # pre-check en run-skill.ps1 y el check 7 de run-health-check.ps1).
+    $nowIso = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
+    $query = "/posts?where[$($script:F.Status)][equals]=scheduled&where[$($script:F.PublishAt)][less_than]=$nowIso&limit=$Limit"
     $resp = Invoke-PayloadGet $query
     $__r = @($resp.docs | ForEach-Object {
-      [pscustomobject]@{
-        id               = $_.id
-        title            = $_.title
-        ledaImageStyle = $_.ledaImageStyle
-        publishedAt      = $_.publishedAt
+      $o = [ordered]@{
+        id    = $_.id
+        title = $_.title
+        slug  = $_.slug
       }
+      $o[$script:F.PublishAt] = $_.($script:F.PublishAt)
+      [pscustomobject]$o
+    })
+    ConvertTo-Json -InputObject $__r -Depth 5
+  }
+
+  'find-recent-styles' {
+    # Últimos N posts publicados con el campo de estilo de imagen seteado (para anti-repetición).
+    # N default = 3 (controlado por -Limit).
+    if (-not $Limit) { $Limit = 3 }
+    if (-not $script:F.ImageStyle) {
+      # El Payload de este proyecto no tiene campo de estilo de imagen: sin memoria de familias →
+      # pool completo, random puro.
+      Write-Warning "El proyecto '$Project' no tiene campo de estilo de imagen (project.json → payload.imageStyleField = null): devuelvo [] — usa el pool completo de familias y NO mandes el campo en update-post."
+      ConvertTo-Json -InputObject @() -Depth 5
+      break
+    }
+    $query = "/posts?where[_status][equals]=published&where[$($script:F.ImageStyle)][exists]=true&sort=-publishedAt&limit=$Limit"
+    $resp = Invoke-PayloadGet $query
+    $__r = @($resp.docs | ForEach-Object {
+      $o = [ordered]@{
+        id    = $_.id
+        title = $_.title
+      }
+      $o[$script:F.ImageStyle] = $_.($script:F.ImageStyle)
+      $o['publishedAt'] = $_.publishedAt
+      [pscustomobject]$o
     })
     ConvertTo-Json -InputObject $__r -Depth 5
   }
@@ -498,12 +718,18 @@ switch ($Action) {
   'list-topics' {
     # Ideas disponibles, orden por prioridad (1 = alta). Fuente de un flujo de publicación desde cero.
     # -Category filtra por cluster — el publisher selecciona por cluster, no por orden arbitrario.
-    $query = "/topics?where[status][equals]=idea&sort=priority&limit=$Limit"
+    Require-Topics
+    # -Status: 'idea' por default (lo que toma el publisher, igual que siempre); 'all' trae todas,
+    # para deduplicar contra ideas ya tomadas o entregadas (p. ej. un content-topic-scan).
+    $topicStatus = if ($Status) { $Status } else { 'idea' }
+    $query = "/topics?sort=priority&limit=$Limit"
+    if ($topicStatus -ne 'all') { $query += "&where[status][equals]=$topicStatus" }
     if ($Category) { $query += "&where[cluster][equals]=$Category" }
     $resp = Invoke-PayloadGet $query
     $__r = @($resp.docs | ForEach-Object {
       [pscustomobject]@{
         id            = $_.id
+        status        = $_.status
         keyword       = $_.keyword
         intent        = $_.intent
         audience      = $_.audience
@@ -519,12 +745,23 @@ switch ($Action) {
   }
 
   'claim-topic' {
+    Require-Topics
     if (-not $TopicId) { Write-Error "TopicId requerido"; exit 1 }
     Invoke-PayloadPatch "/topics/$TopicId" @{ status = 'assigned' } | ConvertTo-Json -Depth 5
   }
 
+  'create-topic' {
+    # POST /topics — carga UNA idea al banco (seed inicial o alta puntual). Body por archivo UTF-8
+    # (-BodyJsonFile) con los campos de la collection del proyecto (keyword, audience, cluster,
+    # intent, priority, brief, internalLinks, ctaTarget, status='idea'). Devuelve el doc creado.
+    Require-Topics
+    $body = Read-BodyJson
+    Invoke-PayloadPost "/topics" $body | ConvertTo-Json -Depth 10
+  }
+
   'deliver-topic' {
     # idea→drafted al entregar el draft; -Notes deja la referencia (ej. "post id 12").
+    Require-Topics
     if (-not $TopicId) { Write-Error "TopicId requerido"; exit 1 }
     $body = @{ status = 'drafted' }
     if ($Notes) { $body['notes'] = $Notes }

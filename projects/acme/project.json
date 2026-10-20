@@ -1,5 +1,5 @@
 {
-  "$comment": "Proyecto de EJEMPLO (Acme es un SaaS ficticio): reemplaza todos los valores por los de tu producto. Schema documentado en projects/README.md. Lo consumen scripts/project.ps1 (Resolve-ProjectContext) y los wrappers vía -Project acme.",
+  "$comment": "Proyecto de EJEMPLO (Acme es un SaaS ficticio): reemplaza todos los valores por los de tu producto. Schema documentado en projects/README.md. Lo consumen scripts/project.ps1 (Resolve-ProjectContext), scripts/leda-helpers.ps1, los wrappers vía -Project acme y el Project Lead (lead/). Las claves que empiezan con $comment las ignoran todos los scripts.",
   "slug": "acme",
   "name": "Acme",
   "ownerName": "Alex",
@@ -10,8 +10,29 @@
   },
   "productRepoPath": "..\\..\\acme-app",
   "productRepoUrl": "https://github.com/your-org/acme-app",
+  "$comment_productRepos": "Opcional: solo si el producto vive en VARIOS repos (bórralo si es uno solo). Numa, Greta y Pico los leen todos en solo lectura ({{PRODUCT_REPOS}}); Cody escribe solo en los que no tienen readOnly ({{WRITABLE_REPOS}}), y por defecto en productRepoPath, que también va en la lista. Cada path se clona en el server en esa ruta; scripts/sync-product-repos.ps1 los pone al día. Un path que no existe en disco no rompe la corrida: el wrapper avisa y el agente no lo ve.",
+  "productRepos": [
+    { "key": "app", "path": "..\\..\\acme-app", "repoUrl": "https://github.com/your-org/acme-app", "url": "https://app.acme.example", "role": "TODO(acme): la app — registro, activación, checkout; dónde vive el funnel", "owner": "TODO(acme): quién lo mantiene" },
+    { "key": "site", "path": "..\\..\\acme-site", "repoUrl": "https://github.com/your-org/acme-site", "url": "https://www.acme.example", "role": "TODO(acme): sitio de marketing + blog — SEO/AEO, CTAs hacia la app", "owner": "TODO(acme): quién lo mantiene", "readOnly": true }
+  ],
   "productUrl": "https://acme.example",
+  "$comment_productionDomain": "Opcional: dominio canónico de producción, con www si el apex redirige (un redirect puede perder el header Authorization). Ningún script lo lee: es la referencia para skills y overrides que arman URLs públicas.",
+  "productionDomain": "https://www.acme.example",
   "productStack": "TODO(acme): describe tu stack. Ejemplo: Next.js (App Router) + TypeScript + Tailwind + Supabase (Postgres + RLS) + CMS headless (p. ej. Payload) + Stripe. Package manager: pnpm. Deploy: Vercel.",
+  "vercel": {
+    "$comment": "Opcional: pin del MCP read-only de Vercel (scripts/mcp-vercel). Son los ÚNICOS proyectos de Vercel que un agente de Acme puede leer (deploys, build logs, errores de runtime). Los exporta scripts/project.ps1 (Set-ProjectVercelEnv) como VERCEL_TEAM_ID / VERCEL_PROJECTS. Son ids, no secretos: van versionados. El token (VERCEL_API_TOKEN) vive en .env.server. Bórralo si el producto no está en Vercel. Detalle: docs/vercel-readonly-source.md.",
+    "teamId": "{{VERCEL_TEAM_ID}}",
+    "projects": [
+      { "key": "app", "id": "{{VERCEL_PROJECT_ID_APP}}", "name": "TODO(acme): nombre del proyecto en Vercel", "role": "TODO(acme): qué sirve (p. ej. app.acme.example — la app + sus crons)" }
+    ]
+  },
+  "dbTunnel": {
+    "$comment": "Opcional: solo si la base del producto es MySQL en una VM y el MCP mysql (scripts/mcp-mysql) la lee por un túnel SSH. Lo lee scripts/db-tunnel.ps1 -Project acme -Action keygen|trust|test|install|status (las env vars DB_TUNNEL_* de .env.acme ganan sobre esto). host = IP o nombre de la VM; user = el usuario SSH sin shell que solo abre el túnel; localPort = el MYSQL_PORT de .env.acme; remotePort = donde escucha la base en 127.0.0.1 de la VM. No son secretos (la key vive en ~/.ssh). Bórralo si la base es Supabase. Detalle: docs/mysql-readonly-source.md.",
+    "host": "{{DB_TUNNEL_HOST}}",
+    "user": "agents-tunnel",
+    "localPort": 13306,
+    "remotePort": 3306
+  },
   "envFile": ".env.acme",
   "contextDir": "projects\\acme",
   "mcpConfig": "plugins\\team-growth\\.mcp.json",
@@ -21,9 +42,20 @@
     "seo": "plugins\\team-growth\\seo.mcp.json",
     "aeo": "plugins\\team-growth\\aeo.mcp.json"
   },
+  "payload": {
+    "$comment": "Opcional: contrato del CMS del blog (Payload) para el pipeline de Leda. scripts/leda-helpers.ps1 lee topics / guides (y, si las declaras, agentFieldPrefix / publishedByAgentValue / imageStyleField); las skills de contenido leen baseUrl / adminUrl / localized / defaultAuthorId. Sin agentFieldPrefix el helper usa el contrato leda* (ledaStatus / ledaPublishAt / ledaProcessedAt / ledaImageStyle, estado final published_by_leda), que es el que asumen las skills de plugins/team-shared; si tu CMS usa los campos neutrales agent*, agrega \"agentFieldPrefix\": \"agent\", \"publishedByAgentValue\": \"published_by_agent\" e \"imageStyleField\": \"agentImageStyle\" (null = el CMS no tiene campo de estilo de imagen) y adapta las skills a esos nombres. topics=true = existe la collection 'topics' (el banco de ideas); en false, las acciones de topics fallan claro. guides=true = los posts tienen guías y satélites (isPillar / pillar). defaultAuthorId = id NUMÉRICO del usuario del CMS que firma los posts (null = no se manda authors). La URL que usa el helper sale de PAYLOAD_BASE_URL en .env.acme; baseUrl es la referencia para las skills. Bórralo si Leda no publica en un blog.",
+    "baseUrl": "https://www.acme.example/api",
+    "adminUrl": "https://www.acme.example/admin",
+    "topics": true,
+    "guides": false,
+    "localized": false,
+    "defaultAuthorId": null
+  },
   "languageConvention": "TODO(acme): convención de idioma del copy customer-facing. Ejemplo: español neutro con tuteo, ortografía completa (tildes también en mayúsculas y títulos, signos de apertura ¿¡). Si un contenido existente no la cumple, es un error a corregir, no un estilo a imitar.",
   "strategicFocus": "TODO(acme): foco estratégico actual en 1-3 oraciones. Ejemplo: segmento B2C self-serve; prioridad en activación y conversión a pago; el plan Enterprise queda fuera de scope por ahora.",
   "shippedDigestFollowers": ["owner@example.com"],
+  "$comment_shippedDigestDiscordWebhookVar": "Opcional: NOMBRE (no el valor) de la env var de .env.acme con un webhook de Discord. Si tiene valor, run-pico-shipped.ps1 postea además un resumen del changelog semanal en ese canal (p. ej. 'DISCORD_WEBHOOK_NUMA', el mismo canal del pulso diario de Numa). Vacío = sin Discord.",
+  "shippedDigestDiscordWebhookVar": "",
   "agents": {
     "capi":  { "enabled": true },
     "numa":  { "enabled": true },
